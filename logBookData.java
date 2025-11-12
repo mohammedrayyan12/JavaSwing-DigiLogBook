@@ -69,7 +69,7 @@ class DataPlace {
 		jf.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		jf.setSize(900, 500);
 		jf.setLocationRelativeTo(null);
-        System.err.println(JDBC_URL_cloud);
+
         createInitialView();
 		jf.setVisible(true);
 	}
@@ -114,12 +114,38 @@ class DataPlace {
 		JButton backButton = new JButton("Back");
 		optionsPanel.add(backButton);
 
+        //Add "Refresh" button
+        JButton refresh = new JButton("⟳");
+		optionsPanel.add(refresh);
+
+		optionsPanel.add(new JLabel("  ")); //Spacer
+
+        String[] labSubjects = {"Subjects","Sub1","Sub2","Sub3","Sub4","Others"};
+        JComboBox sub = new JComboBox<>(labSubjects); 
+        optionsPanel.add(sub);
+
+        String[] departments = {"Departments","Dept1","Dept2","Dept3","Dept4"};
+        JComboBox department = new JComboBox<>(departments); 
+        optionsPanel.add(department);
+
+		String[] batches = {"Batches","I","II"};
+        JComboBox batch = new JComboBox<>(batches); 
+        optionsPanel.add(batch);
+
+		String[] sems = {"Semesters", "1", "2", "3", "4", "5", "6", "7", "8"};
+        JComboBox sem = new JComboBox<>(sems); 
+        optionsPanel.add(sem);
+
 		backButton.addActionListener(e -> {
 			jf.remove(mainContent);
 			createInitialView();
 			jf.revalidate();
 			jf.repaint();
         });
+
+		refresh.addActionListener(e -> {
+			syncDatabases();;
+		});
 
         return optionsPanel;
     }
