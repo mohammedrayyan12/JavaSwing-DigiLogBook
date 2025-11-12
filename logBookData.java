@@ -2,6 +2,7 @@ import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 import java.awt.*;
+import java.awt.event.ActionListener;
 import java.io.File;
 import java.sql.*;
 import java.util.ArrayList;
@@ -12,11 +13,23 @@ class DataPlace {
     JFrame jf;
     JPanel view;
     JPanel mainContent;
+    private JComboBox<String> sub, department, batch, sem;
+    private static String base = System.getenv("DATABASE");
 
     private final String JDBC_URL_cloud = System.getenv("JDBC_URL_cloud");
     private final String JDBC_URL_local = System.getenv("JDBC_URL_local"); // for now sqlite
 	private final String USERNAME = System.getenv("JDBC_USERNAME_local");
 	private final String PASSWORD = System.getenv("JDBC_PASSWORD_local");
+
+    DataPlace() {
+		jf = new JFrame("Data Zone");
+		jf.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		jf.setSize(900, 500);
+		jf.setLocationRelativeTo(null);
+
+        createInitialView();
+		jf.setVisible(true);
+	}
 
     void syncDatabases() {
 		try (Connection cloudConn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME, PASSWORD);
@@ -65,9 +78,13 @@ class DataPlace {
 			e.printStackTrace();
 		}
 	}
-	public void getDatafromDataBase(String database, JPanel mainContent, String sSub, String sDept,
+	public List<List<String>> getDatafromDataBase(String database, JPanel mainContent, String sSub, String sDept,
     String sSem, String sBatch) {
         Connection connection = null;
+
+		// each entry is stored in records (EVERYTHING)
+		List<List<String>> records = new ArrayList<>();
+
         try {
             connection= DriverManager.getConnection(JDBC_URL_local);
         } catch (SQLException e) {
@@ -114,8 +131,6 @@ class DataPlace {
 
 				ResultSet resultSet = preparedStatement.executeQuery();
 
-				// each entry is stored in records (EVERYTHING)
-				List<List<String>> records = new ArrayList<>();
 
 				while (resultSet.next()) {
 					records.add(Arrays.asList(
@@ -134,23 +149,38 @@ class DataPlace {
 				
 			}
             System.out.println("Data Retrived");
+            return records;
 		} catch (SQLException e) {
 			System.out.println("Database not connected");
 			System.out.println(e.getMessage());
-
+            return records;
 		}
 
     }
 
-    DataPlace() {
-		jf = new JFrame("Data Zone");
-		jf.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-		jf.setSize(900, 500);
-		jf.setLocationRelativeTo(null);
+    void showData(String database, JPanel mainContent, String sSub, String sDept, String sSem, String sBatch) {
 
-        createInitialView();
-		jf.setVisible(true);
-	}
+		// remove previously present content
+		if (mainContent.getComponentCount() > 1)
+			mainContent.remove(1);
+
+		// Grouped records
+		List<List<String>> groups = getDatafromDataBase(database, mainContent, sSub, sDept, sSem, sBatch);
+
+        String rec = "";
+        for (List<String> singleRecord : groups) {
+            for(String value: singleRecord) {
+                rec += value; 
+            }
+            rec += "\n";
+        }
+        JLabel records = new JLabel(rec);
+
+		// Add the content
+		mainContent.add(records);
+		mainContent.revalidate();
+		mainContent.repaint();
+    }
 
     void createInitialView() {
         view = new JPanel(new FlowLayout());
@@ -169,14 +199,18 @@ class DataPlace {
 
     void showAddLogBookPanel() {
         importFromUserSelection();
-        showViewLogBookPanel();
+        // showViewLogBookPanel();
     }
 
     void showViewLogBookPanel() {
 		mainContent = new JPanel(new BorderLayout(12, 12));
 
 		mainContent.add(createOptionsPanel(), BorderLayout.NORTH);
+
         syncDatabases();
+        showData(base, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
+				sem.getSelectedItem().toString().trim(), batch.getSelectedItem().toString().trim());
+
 		jf.remove(view);
 		jf.add(mainContent);
 		jf.revalidate();
@@ -198,20 +232,34 @@ class DataPlace {
 		optionsPanel.add(new JLabel("  ")); //Spacer
 
         String[] labSubjects = {"Subjects","Sub1","Sub2","Sub3","Sub4","Others"};
-        JComboBox sub = new JComboBox<>(labSubjects); 
+        sub = new JComboBox<>(labSubjects); 
         optionsPanel.add(sub);
 
         String[] departments = {"Departments","Dept1","Dept2","Dept3","Dept4"};
-        JComboBox department = new JComboBox<>(departments); 
+        department = new JComboBox<>(departments); 
         optionsPanel.add(department);
 
 		String[] batches = {"Batches","I","II"};
-        JComboBox batch = new JComboBox<>(batches); 
+        batch = new JComboBox<>(batches); 
         optionsPanel.add(batch);
 
 		String[] sems = {"Semesters", "1", "2", "3", "4", "5", "6", "7", "8"};
-        JComboBox sem = new JComboBox<>(sems); 
+        sem = new JComboBox<>(sems); 
         optionsPanel.add(sem);
+
+        ActionListener actionListener = e -> 
+ 			showData(base, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
+			sem.getSelectedItem().toString().trim(), batch.getSelectedItem().toString().trim());
+
+		ActionListener actionListenerCombo = e ->{ 
+			((JComboBox) e.getSource()).setPopupVisible(false);	
+			actionListener.actionPerformed(e);
+		};
+
+		sub.addActionListener(actionListenerCombo);
+		department.addActionListener(actionListenerCombo);
+		batch.addActionListener(actionListenerCombo);
+		sem.addActionListener(actionListenerCombo);
 
 		backButton.addActionListener(e -> {
 			jf.remove(mainContent);
@@ -222,6 +270,7 @@ class DataPlace {
 
 		refresh.addActionListener(e -> {
 			syncDatabases();;
+            actionListener.actionPerformed(e);
 		});
 
         return optionsPanel;
