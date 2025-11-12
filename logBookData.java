@@ -4,6 +4,7 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.event.ActionListener;
 import java.io.File;
+import java.io.IOException;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -32,6 +33,8 @@ class DataPlace {
 	}
 
     void syncDatabases() {
+        if (base.equals("temp")) return;
+
 		try (Connection cloudConn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME, PASSWORD);
 				Connection localConn = DriverManager.getConnection(JDBC_URL_local)) {
 
@@ -82,14 +85,20 @@ class DataPlace {
     String sSem, String sBatch) {
         Connection connection = null;
 
+        // configure which database to connect
+		if (database.equals("temp")) {
+			connection = logBookData.manager.connection;
+		} else {
+			try {
+				connection = DriverManager.getConnection(JDBC_URL_local);
+			} catch (SQLException e) {
+				System.out.println("Connection to sqlite failed: " + e.getMessage());
+			}
+		}
+
 		// each entry is stored in records (EVERYTHING)
 		List<SessionGroup> groups = new ArrayList<>();
 
-        try {
-            connection= DriverManager.getConnection(JDBC_URL_local);
-        } catch (SQLException e) {
-            System.out.println("Connection to sqlite failed: " + e.getMessage());
-        }
         try {
 
 			// Create a StringBuilder to construct the query
@@ -149,13 +158,17 @@ class DataPlace {
 
 					));
 				}
+                System.out.println("Data Retrived/Reloaded");
+
+				if (!database.equals("temp")) {
+					connection.close();
+				}
 
                 // Group the records
 				groups = SessionGrouper.groupSessions(records);
-				
+
+                return groups;
 			}
-            System.out.println("Data Retrived");
-            return groups;
 		} catch (SQLException e) {
 			System.out.println("Database not connected");
 			System.out.println(e.getMessage());
@@ -243,20 +256,18 @@ class DataPlace {
 		jf.add(view);
 
         addLogBook.addActionListener(e -> {
-            showAddLogBookPanel();
+            base = "temp";
+            if (importFromUserSelection())
+                showAddViewLogBookPanel();
         });
 
         viewLogBook.addActionListener(e -> {
-            showViewLogBookPanel();
+            base = System.getenv("DATABASE");
+            showAddViewLogBookPanel();
         });
     }
 
-    void showAddLogBookPanel() {
-        importFromUserSelection();
-        // showViewLogBookPanel();
-    }
-
-    void importFromUserSelection() {
+    boolean importFromUserSelection() {
         JFileChooser fileChooser = new JFileChooser();
 		fileChooser.setDialogTitle("Select a CSV file to import");
 		fileChooser.setCurrentDirectory(new File("./") );
@@ -269,14 +280,27 @@ class DataPlace {
         if (userSelection == JFileChooser.APPROVE_OPTION) {
 
 			File selectedFile = fileChooser.getSelectedFile();
+            String csvFilePath = selectedFile.getAbsolutePath();
 
-            JOptionPane.showMessageDialog(null, "Successfully imported data from " + selectedFile.getName(),
+			try {
+				logBookData.manager = new AddLogbookManager();
+				// Call the import method with the user-selected file path
+				logBookData.manager.importCsvToDatabase(csvFilePath);
+				JOptionPane.showMessageDialog(null, "Successfully imported data from " + selectedFile.getName(),
 						"Import Complete", JOptionPane.INFORMATION_MESSAGE);
+				return true;
+			} catch (IOException | SQLException e) {
+				JOptionPane.showMessageDialog(null, "Error importing data: " + e.getMessage(), "Import Error",
+						JOptionPane.ERROR_MESSAGE);
+				e.printStackTrace();
+			}
+
         }
+        return false;
 
     }
-        
-    void showViewLogBookPanel() {
+
+    void showAddViewLogBookPanel() {
 		mainContent = new JPanel(new BorderLayout(12, 12));
         mainContent.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
@@ -341,7 +365,17 @@ class DataPlace {
 			createInitialView();
 			jf.revalidate();
 			jf.repaint();
-        });
+			if (logBookData.manager != null) {
+				try {
+					logBookData.manager.close();
+					logBookData.manager = null;
+				} catch (SQLException ee) {
+					System.err.println("Error closing database connection: " + ee.getMessage());
+				}
+			} else {
+				System.out.println("Manger is null");
+			}
+		});
 
 		refresh.addActionListener(e -> {
 			syncDatabases();;
@@ -356,6 +390,7 @@ class DataPlace {
 public class logBookData {
 
     static Integer count = 1;
+    static AddLogbookManager manager;
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(new Runnable() {
