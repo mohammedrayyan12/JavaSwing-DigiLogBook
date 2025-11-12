@@ -4,6 +4,9 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.io.File;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 class DataPlace {
     JFrame jf;
@@ -62,7 +65,82 @@ class DataPlace {
 			e.printStackTrace();
 		}
 	}
-	
+	public void getDatafromDataBase(String database, JPanel mainContent, String sSub, String sDept,
+    String sSem, String sBatch) {
+        Connection connection = null;
+        try {
+            connection= DriverManager.getConnection(JDBC_URL_local);
+        } catch (SQLException e) {
+            System.out.println("Connection to sqlite failed: " + e.getMessage());
+        }
+        try {
+
+			// Create a StringBuilder to construct the query
+			StringBuilder showQueryBuilder = new StringBuilder("SELECT * FROM " + database + " WHERE 1=1");
+			List<String> params = new ArrayList<>();
+
+			// Conditionally append WHERE clauses
+			if (!sDept.equals("Departments")) {
+				showQueryBuilder.append(" AND dept=?");
+				params.add(sDept);
+			}
+
+			if (!sBatch.equalsIgnoreCase("Batches")) {
+				showQueryBuilder.append(" AND batch=?");
+				params.add(sBatch);
+			}
+
+			if (!sSem.equals("Semester")) {
+				showQueryBuilder.append(" AND sem=?");
+				params.add(sSem);
+			}
+
+			// Add the new sSub parameter
+			if (!sSub.equalsIgnoreCase("Subjects")) {
+				showQueryBuilder.append(" AND sub=?"); 
+				params.add(sSub);
+			}
+
+			// Add the ORDER BY clause
+			showQueryBuilder.append(" ORDER BY USN");
+
+			String showQuery = showQueryBuilder.toString();
+			try (PreparedStatement preparedStatement = connection.prepareStatement(showQuery)) {
+
+				// Loop through the collected parameters and set them
+				for (int i = 0; i < params.size(); i++) {
+					preparedStatement.setString(i + 1, params.get(i));
+				}
+
+				ResultSet resultSet = preparedStatement.executeQuery();
+
+				// each entry is stored in records (EVERYTHING)
+				List<List<String>> records = new ArrayList<>();
+
+				while (resultSet.next()) {
+					records.add(Arrays.asList(
+							resultSet.getString("login_time"),
+							resultSet.getString("logout_time"),
+							resultSet.getString("usn"),
+							resultSet.getString("name"),
+							resultSet.getString("sem"),
+							resultSet.getString("dept"),
+							resultSet.getString("sub"),
+							resultSet.getString("batch"),
+							resultSet.getString("session_id")
+
+					));
+				}
+				
+			}
+            System.out.println("Data Retrived");
+		} catch (SQLException e) {
+			System.out.println("Database not connected");
+			System.out.println(e.getMessage());
+
+		}
+
+    }
 
     DataPlace() {
 		jf = new JFrame("Data Zone");
@@ -99,7 +177,6 @@ class DataPlace {
 
 		mainContent.add(createOptionsPanel(), BorderLayout.NORTH);
         syncDatabases();
-
 		jf.remove(view);
 		jf.add(mainContent);
 		jf.revalidate();
