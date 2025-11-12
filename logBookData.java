@@ -78,12 +78,12 @@ class DataPlace {
 			e.printStackTrace();
 		}
 	}
-	public List<List<String>> getDatafromDataBase(String database, JPanel mainContent, String sSub, String sDept,
+	public List<SessionRecord> getDatafromDataBase(String database, JPanel mainContent, String sSub, String sDept,
     String sSem, String sBatch) {
         Connection connection = null;
 
 		// each entry is stored in records (EVERYTHING)
-		List<List<String>> records = new ArrayList<>();
+		List<SessionRecord> records = new ArrayList<>();
 
         try {
             connection= DriverManager.getConnection(JDBC_URL_local);
@@ -133,7 +133,7 @@ class DataPlace {
 
 
 				while (resultSet.next()) {
-					records.add(Arrays.asList(
+					records.add(new SessionRecord(
 							resultSet.getString("login_time"),
 							resultSet.getString("logout_time"),
 							resultSet.getString("usn"),
@@ -165,13 +165,12 @@ class DataPlace {
 			mainContent.remove(1);
 
 		// Grouped records
-		List<List<String>> groups = getDatafromDataBase(database, mainContent, sSub, sDept, sSem, sBatch);
+		List<SessionRecord> groups = getDatafromDataBase(database, mainContent, sSub, sDept, sSem, sBatch);
 
         String rec = "";
-        for (List<String> singleRecord : groups) {
-            for(String value: singleRecord) {
-                rec += value; 
-            }
+        for (SessionRecord r : groups) {
+            rec += r.getSub() + "_" + r.getDept() + "_" + r.getSem() + "_" + r.getBatch() + "_" 
+					+ r.getLoginTime().toLocalDate();
             rec += "\n";
         }
         JLabel records = new JLabel(rec);
