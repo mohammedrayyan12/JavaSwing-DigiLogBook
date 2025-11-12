@@ -78,12 +78,12 @@ class DataPlace {
 			e.printStackTrace();
 		}
 	}
-	public List<SessionRecord> getDatafromDataBase(String database, JPanel mainContent, String sSub, String sDept,
+	public List<SessionGroup> getDatafromDataBase(String database, JPanel mainContent, String sSub, String sDept,
     String sSem, String sBatch) {
         Connection connection = null;
 
 		// each entry is stored in records (EVERYTHING)
-		List<SessionRecord> records = new ArrayList<>();
+		List<SessionGroup> groups = new ArrayList<>();
 
         try {
             connection= DriverManager.getConnection(JDBC_URL_local);
@@ -131,6 +131,9 @@ class DataPlace {
 
 				ResultSet resultSet = preparedStatement.executeQuery();
 
+                // each entry is stored in records (EVERYTHING)
+				List<SessionRecord> records = new ArrayList<>();
+
 
 				while (resultSet.next()) {
 					records.add(new SessionRecord(
@@ -146,14 +149,17 @@ class DataPlace {
 
 					));
 				}
+
+                // Group the records
+				groups = SessionGrouper.groupSessions(records);
 				
 			}
             System.out.println("Data Retrived");
-            return records;
+            return groups;
 		} catch (SQLException e) {
 			System.out.println("Database not connected");
 			System.out.println(e.getMessage());
-            return records;
+            return groups;
 		}
 
     }
@@ -165,18 +171,24 @@ class DataPlace {
 			mainContent.remove(1);
 
 		// Grouped records
-		List<SessionRecord> groups = getDatafromDataBase(database, mainContent, sSub, sDept, sSem, sBatch);
+		List<SessionGroup> groups = getDatafromDataBase(database, mainContent, sSub, sDept, sSem, sBatch);
 
-        String rec = "";
-        for (SessionRecord r : groups) {
-            rec += r.getSub() + "_" + r.getDept() + "_" + r.getSem() + "_" + r.getBatch() + "_" 
-					+ r.getLoginTime().toLocalDate();
-            rec += "\n";
+        JPanel labelPanel = new JPanel();
+        
+        // Set the layout ONLY for the sub-panel to stack vertically
+        labelPanel.setLayout(new BoxLayout(labelPanel, BoxLayout.Y_AXIS));
+
+        for (SessionGroup r : groups) {
+            labelPanel.add(new JLabel(r.date +"_"+ r.slot +"_"+ r.dept + "_"+ r.sem +"_"+ r.sub +"_"+ r.batch));
+            for(SessionRecord re: r.records) {
+                labelPanel.add(new JLabel(re.name + "_" + re.usn));
+            }
         }
-        JLabel records = new JLabel(rec);
+
+        JScrollPane scroll = new JScrollPane(labelPanel);
 
 		// Add the content
-		mainContent.add(records);
+        mainContent.add(scroll, BorderLayout.CENTER);
 		mainContent.revalidate();
 		mainContent.repaint();
     }
@@ -242,7 +254,7 @@ class DataPlace {
         batch = new JComboBox<>(batches); 
         optionsPanel.add(batch);
 
-		String[] sems = {"Semesters", "1", "2", "3", "4", "5", "6", "7", "8"};
+		String[] sems = {"Semester", "1", "2", "3", "4", "5", "6", "7", "8"};
         sem = new JComboBox<>(sems); 
         optionsPanel.add(sem);
 
