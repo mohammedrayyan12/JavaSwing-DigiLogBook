@@ -1,0 +1,17 @@
+-> Table creation
+CREATE TABLE table_name (login_time TEXT, logout_time TEXT, name TEXT, usn TEXT, sem TEXT, dept TEXT, sub TEXT, batch TEXT, session_id TEXT PRIMARY KEY);
+
+->Insertion
+INSERT or REPLACE INTO table_name (login_time, usn, name, sem, dept, sub, batch, logout_time, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+
+---->Manaul CSV order and format
+1. Login Time (ISO-8601 format, which typically looks like yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSS)
+2. USN (of regex 1vi\d{2}[a-ZA-Z]{2}\d{3})
+3 .Name (ASCII Characters)
+4. Sem ( 1<= sem <= 8)
+5. Dept ( in ["CSE", "ISE", "AIML", "DS", "ECE", "MECH", "CIVIL"] )
+6. Subject
+7. Batch ( I or II )
+8. Logout Time (ISO-8601 format, which typically looks like yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSS)
+9. Session Id (unique)
