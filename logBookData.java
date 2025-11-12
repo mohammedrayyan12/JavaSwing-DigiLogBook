@@ -173,19 +173,7 @@ class DataPlace {
 		// Grouped records
 		List<SessionGroup> groups = getDatafromDataBase(database, mainContent, sSub, sDept, sSem, sBatch);
 
-        JPanel labelPanel = new JPanel();
-        
-        // Set the layout ONLY for the sub-panel to stack vertically
-        labelPanel.setLayout(new BoxLayout(labelPanel, BoxLayout.Y_AXIS));
-
-        for (SessionGroup r : groups) {
-            labelPanel.add(new JLabel(r.date +"_"+ r.slot +"_"+ r.dept + "_"+ r.sem +"_"+ r.sub +"_"+ r.batch));
-            for(SessionRecord re: r.records) {
-                labelPanel.add(new JLabel(re.name + "_" + re.usn));
-            }
-        }
-
-        JScrollPane scroll = new JScrollPane(labelPanel);
+        JScrollPane scroll = new JScrollPane(new TimeGroupPanel(groups));
 
 		// Add the content
         mainContent.add(scroll, BorderLayout.CENTER);
@@ -194,9 +182,65 @@ class DataPlace {
     }
 
     void createInitialView() {
-        view = new JPanel(new FlowLayout());
-        JButton addLogBook = new JButton("Add"); view.add(addLogBook);
-        JButton viewLogBook = new JButton("View"); view.add(viewLogBook);
+		try {
+			for (UIManager.LookAndFeelInfo info : UIManager.getInstalledLookAndFeels()) {
+				if ("Nimbus".equals(info.getName())) {
+					UIManager.setLookAndFeel(info.getClassName());
+					break;
+				}
+			}
+		} catch (Exception e) {
+			// Use default if Nimbus is not available
+			System.out.println("Nimbus not there");
+		}        
+
+        view = new JPanel(new BorderLayout());
+		// view.setBackground(new Color(24, 25, 26));
+		view.setBorder(BorderFactory.createEmptyBorder(50, 50, 50, 50));
+
+		// Heading Panel at the Top (North)
+		JPanel headingPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+		headingPanel.setOpaque(false);
+		JLabel title = new JLabel("Log book");
+		title.setFont(new Font("Arial", Font.BOLD, 48));
+		title.setForeground(Color.WHITE);
+		headingPanel.add(title);
+		view.add(headingPanel, BorderLayout.NORTH);
+
+		// Content Panel in the Center
+		JPanel contentPanel = new JPanel(new GridBagLayout());
+		contentPanel.setOpaque(false);
+
+		// Buttons Panel with Descriptions
+		JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 50, 0));
+		buttonPanel.setOpaque(false);
+
+		// "Add" Button with multiline HTML text
+		JButton addLogBook = new JButton(
+				"<html><center><b>+ Add</b><br><font size=\"3\">Add csv file</font></center></html>");
+		addLogBook.setFont(new Font("Arial", Font.BOLD, 24));
+		addLogBook.setForeground(Color.WHITE);
+		addLogBook.setBackground(new Color(52, 199, 89));
+		addLogBook.setBorder(BorderFactory.createLineBorder(new Color(52, 199, 89), 2, true));
+		addLogBook.setPreferredSize(new Dimension(200, 80));
+		addLogBook.setFocusPainted(false);
+		buttonPanel.add(addLogBook);
+
+		// "View" Button with multiline HTML text
+		JButton viewLogBook = new JButton(
+				"<html><center><b>→ View</b><br><font size=\"3\">View existing data</font></center></html>");
+		viewLogBook.setFont(new Font("Arial", Font.BOLD, 24));
+		viewLogBook.setForeground(Color.WHITE);
+		viewLogBook.setBackground(new Color(88, 86, 214));
+		viewLogBook.setBorder(BorderFactory.createLineBorder(new Color(88, 86, 214), 2, true));
+		viewLogBook.setPreferredSize(new Dimension(200, 80));
+		viewLogBook.setFocusPainted(false);
+		buttonPanel.add(viewLogBook);
+
+		contentPanel.add(buttonPanel);
+		view.add(contentPanel, BorderLayout.CENTER);
+
+		jf.add(view);
 
         addLogBook.addActionListener(e -> {
             showAddLogBookPanel();
@@ -205,7 +249,6 @@ class DataPlace {
         viewLogBook.addActionListener(e -> {
             showViewLogBookPanel();
         });
-        jf.add(view);
     }
 
     void showAddLogBookPanel() {
@@ -213,8 +256,29 @@ class DataPlace {
         // showViewLogBookPanel();
     }
 
+    void importFromUserSelection() {
+        JFileChooser fileChooser = new JFileChooser();
+		fileChooser.setDialogTitle("Select a CSV file to import");
+		fileChooser.setCurrentDirectory(new File("./") );
+
+        //filter to show only folders/CSV files in current directory
+        FileNameExtensionFilter filter = new FileNameExtensionFilter("CSV Files", "csv"); 
+		fileChooser.setFileFilter(filter);
+
+		int userSelection = fileChooser.showOpenDialog(null); 
+        if (userSelection == JFileChooser.APPROVE_OPTION) {
+
+			File selectedFile = fileChooser.getSelectedFile();
+
+            JOptionPane.showMessageDialog(null, "Successfully imported data from " + selectedFile.getName(),
+						"Import Complete", JOptionPane.INFORMATION_MESSAGE);
+        }
+
+    }
+        
     void showViewLogBookPanel() {
 		mainContent = new JPanel(new BorderLayout(12, 12));
+        mainContent.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
 		mainContent.add(createOptionsPanel(), BorderLayout.NORTH);
 
@@ -287,28 +351,12 @@ class DataPlace {
         return optionsPanel;
     }
 
-    void importFromUserSelection() {
-        JFileChooser fileChooser = new JFileChooser();
-		fileChooser.setDialogTitle("Select a CSV file to import");
-		fileChooser.setCurrentDirectory(new File("./") );
-
-        //filter to show only folders/CSV files in current directory
-        FileNameExtensionFilter filter = new FileNameExtensionFilter("CSV Files", "csv"); 
-		fileChooser.setFileFilter(filter);
-
-		int userSelection = fileChooser.showOpenDialog(null); 
-        if (userSelection == JFileChooser.APPROVE_OPTION) {
-
-			File selectedFile = fileChooser.getSelectedFile();
-
-            JOptionPane.showMessageDialog(null, "Successfully imported data from " + selectedFile.getName(),
-						"Import Complete", JOptionPane.INFORMATION_MESSAGE);
-        }
-
-    }
 }
 
 public class logBookData {
+
+    static Integer count = 1;
+
     public static void main(String[] args) {
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
