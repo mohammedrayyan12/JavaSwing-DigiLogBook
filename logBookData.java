@@ -2,20 +2,28 @@ import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 import java.awt.*;
-import java.awt.event.ActionListener;
+import java.awt.event.*;
 import java.io.File;
 import java.io.IOException;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.List;
 
 class DataPlace {
     JFrame jf;
     JPanel view;
     JPanel mainContent;
+    static JTextField dateFrom, dateTo;
+	static JComboBox<String> startTime, endTime;
+	static JCheckBox everything;
+	private JCheckBox matchD, matchT;
+	static JButton exportButton;
+    private JPanel datePanel;
     private JComboBox<String> sub, department, batch, sem;
     private static String base = System.getenv("DATABASE");
+    static boolean matchSlotConditon = false;
 
     private final String JDBC_URL_cloud = System.getenv("JDBC_URL_cloud");
     private final String JDBC_URL_local = System.getenv("JDBC_URL_local"); // for now sqlite
@@ -205,7 +213,59 @@ class DataPlace {
 		} catch (Exception e) {
 			// Use default if Nimbus is not available
 			System.out.println("Nimbus not there");
-		}        
+		}
+        everything = new JCheckBox("All");
+		matchD = new JCheckBox("Match Date");
+		matchT = new JCheckBox("Match Time");
+
+		String date = new java.text.SimpleDateFormat("yyyy-MM-dd, E").format(Calendar.getInstance().getTime());
+		dateFrom = new JTextField(date, 12);
+		dateFrom.setEditable(false);
+		dateTo = new JTextField(date, 12);
+		dateTo.setEditable(false);
+
+		// Add action listeners for dialog components
+		ActionListener dialogActionListener = e -> {
+			if (e.getSource() == everything) {
+				dateFrom.setEnabled(!everything.isSelected());
+				dateTo.setEnabled(!everything.isSelected());
+				matchD.setEnabled(!everything.isSelected());
+			}
+			if (e.getSource() == matchD) {
+				dateTo.setVisible(!matchD.isSelected());
+				datePanel.getComponent(2).setVisible(dateTo.isVisible());
+			}
+			if (e.getSource() == matchT) {
+				matchSlotConditon = !matchSlotConditon;
+			}
+            showData(base, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
+				sem.getSelectedItem().toString().trim(), batch.getSelectedItem().toString().trim());
+		};
+
+        everything.addActionListener(dialogActionListener);
+		matchD.addActionListener(dialogActionListener);
+		matchT.addActionListener(dialogActionListener);
+
+		dateFrom.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				if (dateFrom.isEnabled()) {
+					DatePicker datePicker = new DatePicker(jf, dateFrom);
+					datePicker.showPicker();
+					dialogActionListener.actionPerformed(new ActionEvent(dateFrom, 0, ""));
+				}
+			}
+		});
+		dateTo.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				if (dateTo.isEnabled()) {
+					DatePicker datePicker = new DatePicker(jf, dateTo);
+					datePicker.showPicker();
+					dialogActionListener.actionPerformed(new ActionEvent(dateTo, 0, ""));
+				}
+			}
+		});
 
         view = new JPanel(new BorderLayout());
 		// view.setBackground(new Color(24, 25, 26));
@@ -346,6 +406,11 @@ class DataPlace {
         sem = new JComboBox<>(sems); 
         optionsPanel.add(sem);
 
+        optionsPanel.add(new JLabel("  ")); // Spacer
+
+		JButton selectDateTime = new JButton("Select Date/Time");
+		optionsPanel.add(selectDateTime);
+
         ActionListener actionListener = e -> 
  			showData(base, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
 			sem.getSelectedItem().toString().trim(), batch.getSelectedItem().toString().trim());
@@ -355,10 +420,23 @@ class DataPlace {
 			actionListener.actionPerformed(e);
 		};
 
+        startTime = new JComboBox<>(
+				new String[] { "08:30", "09:20", "10:10", "11:15", "12:15", "13:30", "14:20", "15:10" });
+		endTime = new JComboBox<>(
+				new String[] { "Ongoing", "09:20", "10:10", "11:00", "12:15", "12:55", "14:20", "15:10", "16:00" });
+		endTime.setSelectedItem(endTime.getItemAt(endTime.getItemCount() - 1));
+
 		sub.addActionListener(actionListenerCombo);
 		department.addActionListener(actionListenerCombo);
 		batch.addActionListener(actionListenerCombo);
 		sem.addActionListener(actionListenerCombo);
+        startTime.addActionListener(actionListenerCombo);
+		endTime.addActionListener(actionListenerCombo);
+
+		refresh.addActionListener(e -> {
+			syncDatabases();;
+            actionListener.actionPerformed(e);
+		});
 
 		backButton.addActionListener(e -> {
 			jf.remove(mainContent);
@@ -377,13 +455,42 @@ class DataPlace {
 			}
 		});
 
-		refresh.addActionListener(e -> {
-			syncDatabases();;
-            actionListener.actionPerformed(e);
-		});
+        selectDateTime.addActionListener(e -> showDateTimeDialog());
 
         return optionsPanel;
     }
+
+	void showDateTimeDialog() {
+		JDialog dialog = new JDialog(jf, "Select Date/Time", true);
+		dialog.setResizable(false);
+		dialog.setSize(400, 280);
+		dialog.setLocationRelativeTo(jf);
+
+		JPanel dialogPanel = new JPanel(new GridLayout(0, 1, 5, 5));
+		dialogPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+
+		datePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+		datePanel.add(new JLabel("Date:"));
+		datePanel.add(dateFrom);
+		datePanel.add(new JLabel("to"));
+		datePanel.add(dateTo);
+
+		JPanel timePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+		timePanel.add(new JLabel("Slot:"));
+		timePanel.add(startTime);
+		timePanel.add(new JLabel(" - "));
+		timePanel.add(endTime);
+
+		dialogPanel.add(everything);
+		dialogPanel.add(matchD);
+		dialogPanel.add(datePanel);
+		dialogPanel.add(matchT);
+		dialogPanel.add(timePanel);
+
+		dialog.add(dialogPanel);
+		dialog.setVisible(true);
+	}
+
 
 }
 

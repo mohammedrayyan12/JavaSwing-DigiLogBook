@@ -1,6 +1,8 @@
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -102,19 +104,53 @@ class SessionGrouper {
             List<SessionRecord> groupRecords = entry.getValue();
 
             // Sort by login time
-            groupRecords.sort(Comparator.comparing(r -> r.loginTime));
+            groupRecords.sort(Comparator.comparing(r -> r.usn));
             SessionRecord first_ = groupRecords.get(0);
 
-            String recorDate = first_.getLoginTime().toLocalDate().toString();
+            // Date Comparision
+			DateTimeFormatter formatter1 = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+			DateTimeFormatter formatter2 = DateTimeFormatter.ofPattern("yyyy-MM-dd, EE");
+			LocalDate selectedFromDate = LocalDate.parse(DataPlace.dateFrom.getText(), formatter2);
+			LocalDate selectedToDate = (DataPlace.dateTo.isVisible())
+					? LocalDate.parse(DataPlace.dateTo.getText(), formatter2)
+					: selectedFromDate;
+			String recorDate = first_.getLoginTime().toLocalDate().toString();
+			LocalDate entryDate = LocalDate.parse(recorDate, formatter1);
 
-            // slot comparision
-            String slot = getSlot(first_.getLoginTime(), first_.getLogoutTime());
+			// slot comparision
+			String slot = getSlot(first_.getLoginTime(), first_.getLogoutTime());
+			String[] from_to_time = slot.split("\\s*-\\s*");
+			LocalTime selectedFromTime = LocalTime.parse(DataPlace.startTime.getSelectedItem().toString());
+			String selectedToTime = DataPlace.endTime.getSelectedItem().toString();
+			boolean conn;
+			if (selectedToTime.equals("Ongoing") || from_to_time[1].equals("Ongoing"))
+				if (from_to_time[1].equals("Ongoing"))
+					conn = true;
+				else
+					conn = false;
+			else
+				conn = !LocalTime.parse(from_to_time[1]).isAfter(LocalTime.parse(selectedToTime));
 
-            SessionGroup sg_ = new SessionGroup(recorDate, slot, first_.sub, first_.dept, first_.sem,
-                    first_.batch);
-            sg_.records.addAll(groupRecords);
-            result.add(sg_);
+			boolean slotCondition = (DataPlace.matchSlotConditon)
+					? LocalTime.parse(from_to_time[0]).equals(selectedFromTime)
+							&& (from_to_time[1].equals("Ongoing") || (from_to_time[1]).equals(selectedToTime))
+					: !LocalTime.parse(from_to_time[0]).isBefore(selectedFromTime)
+							&& conn;
+
+			// Grouping
+			if ((DataPlace.everything.isSelected()
+					|| (!entryDate.isBefore(selectedFromDate) && !entryDate.isAfter(selectedToDate)))) {
+				if (slotCondition) {
+
+					SessionGroup sg_ = new SessionGroup(recorDate, slot, first_.sub, first_.dept, first_.sem,
+							first_.batch);
+					sg_.records.addAll(groupRecords);
+					result.add(sg_);
+				}
+			}
         }
+        Comparator<SessionGroup> timeComparator = Comparator.comparing((SessionGroup r) -> r.date + r.slot);
+        result.sort(timeComparator.reversed());
 
         return result;
     }
