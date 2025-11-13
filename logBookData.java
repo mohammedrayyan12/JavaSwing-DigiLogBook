@@ -200,6 +200,79 @@ class DataPlace {
         mainContent.add(scroll, BorderLayout.CENTER);
 		mainContent.revalidate();
 		mainContent.repaint();
+
+		// Add action Listener to "Export Button"
+		ActionListener[] listeners = exportButton.getActionListeners();
+
+		// Remove each listener
+		for (ActionListener listener : listeners) {
+			exportButton.removeActionListener(listener);
+		}
+
+		DataPlace.exportButton.addActionListener(e -> {
+			JFrame frame = new JFrame();
+			JDialog dialog = new JDialog(frame, "Select Groups to Export", true);
+			dialog.setLayout(new BorderLayout());
+
+			JPanel listPanel = new JPanel();
+			listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+			List<JCheckBox> checkBoxes = new ArrayList<>();
+			Integer num = 0;
+			for (SessionGroup group : groups) {
+				JCheckBox cb = new JCheckBox((++num).toString());
+				checkBoxes.add(cb);
+				listPanel.add(cb);
+			}
+
+			JScrollPane scrollPane = new JScrollPane(listPanel);
+			dialog.add(scrollPane, BorderLayout.CENTER);
+
+			JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+			JLabel selectedLabel = new JLabel("0 selected");
+			JButton selectAllBtn = new JButton("Select All");
+			JButton exportBtn = new JButton("Export");
+			String[] pdf_csv = { "PDF", "CSV" };
+			JComboBox<String> format = new JComboBox<>(pdf_csv);
+
+			selectAllBtn.addActionListener(ev -> {
+				boolean isCancel = selectAllBtn.getText().equals("Cancel");
+				selectAllBtn.setText(isCancel ? "Select All" : "Cancel");
+				for (JCheckBox cb : checkBoxes)
+					cb.setSelected(!isCancel);
+
+				long count = checkBoxes.stream().filter(AbstractButton::isSelected).count();
+				selectedLabel.setText(count + " selected");
+			});
+
+			for (JCheckBox cb : checkBoxes) {
+				cb.addActionListener(ev -> {
+					long count = checkBoxes.stream().filter(AbstractButton::isSelected).count();
+					selectedLabel.setText(count + " selected");
+				});
+			}
+			exportBtn.addActionListener(ev -> {
+				ArrayList<SessionGroup> selectedGroups = new ArrayList<>();
+				for (int i = 0; i < checkBoxes.size(); i++) {
+					if (checkBoxes.get(i).isSelected()) {
+						selectedGroups.add(groups.get(i));
+					}
+				}
+				String selected = (String) format.getSelectedItem();
+
+				new ExportCsvPdf(selected,selectedGroups);
+			
+			});
+
+			bottomPanel.add(selectedLabel);
+			bottomPanel.add(selectAllBtn);
+			bottomPanel.add(format);
+			bottomPanel.add(exportBtn);
+			dialog.add(bottomPanel, BorderLayout.SOUTH);
+
+			dialog.setSize(400, 280);
+			dialog.setLocationRelativeTo(mainContent);
+			dialog.setVisible(true);
+		});
     }
 
     void createInitialView() {
@@ -238,6 +311,7 @@ class DataPlace {
 			if (e.getSource() == matchT) {
 				matchSlotConditon = !matchSlotConditon;
 			}
+			// Trigger data refresh
             showData(base, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
 				sem.getSelectedItem().toString().trim(), batch.getSelectedItem().toString().trim());
 		};
@@ -410,6 +484,9 @@ class DataPlace {
 
 		JButton selectDateTime = new JButton("Select Date/Time");
 		optionsPanel.add(selectDateTime);
+
+        exportButton = new JButton("Export");
+		optionsPanel.add(exportButton);
 
         ActionListener actionListener = e -> 
  			showData(base, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),

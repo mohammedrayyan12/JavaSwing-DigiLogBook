@@ -2,13 +2,369 @@
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-
-import javax.swing.*;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.Objects;
+
+import javax.swing.*;
+
+
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+
+
+class ExportCsvPdf {
+    private static File fileToSave;
+    private static JFileChooser fileChooser;
+    private ArrayList<SessionGroup> selectedGroups;
+
+    ExportCsvPdf(String type, ArrayList<SessionGroup> selectedGroups) {
+
+        if (selectedGroups.size() < 1) {
+            // JOptionPane.showMessageDialog(table, "The table is empty and cannot be
+            // exported.", "Warning", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(null, "Nothing to export.", "Warning", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        this.selectedGroups = selectedGroups;
+
+        fileChooser = new JFileChooser();
+        if (type.equals("CSV")) {
+            fileChooser.setDialogTitle("Save as CSV");
+        } else if (type.equals("PDF")) {
+            fileChooser.setDialogTitle("Save as PDF");
+        }
+
+        int userSelection = fileChooser.showSaveDialog(null);
+
+        if (userSelection != JFileChooser.APPROVE_OPTION) {
+            return; // User cancelled the operation.
+        }
+
+        fileToSave = fileChooser.getSelectedFile();
+
+        if (type.equals("CSV"))
+            exportGroupedDataToCSV();
+        else if (type.equals("PDF"))
+            exportGroupedDataToPdf();
+
+    }
+
+    // This method will generate a CSV from a List<SessionGroup>.
+    public void exportGroupedDataToCSV() {
+        if (!fileToSave.getName().toLowerCase().endsWith(".csv")) {
+            fileToSave = new File(fileToSave.getAbsolutePath() + ".csv");
+        }
+
+        try (PrintWriter pw = new PrintWriter(new FileWriter(fileToSave))) {
+            // Define headers. Assuming the same columns as your JTable
+            String[] headers = new String[] { "Login Time", "USN", "Name", "Sem", "Dept", "Subject", "Batch",
+                    "Logout Time", "Session ID" };
+
+            // Write the main header row
+            for (int i = 0; i < headers.length; i++) {
+                pw.print(headers[i]);
+                if (i < headers.length - 1)
+                    pw.print(",");
+            }
+            pw.println();
+
+            for (SessionGroup group : selectedGroups) {
+                // Add a line to separate groups
+                // pw.println("------------------------- Group:  -------------------------");
+
+                // Write the records for the current group
+                for (SessionRecord record : group.records) {
+                    pw.print(record.getLoginTime() + ",");
+                    pw.print(record.getUsn() + ",");
+                    pw.print(record.getName() + ",");
+                    pw.print(record.getSem() + ",");
+                    pw.print(record.getDept() + ",");
+                    pw.print(record.getSub() + ",");
+                    pw.print(record.getBatch() + ",");
+                    pw.print(record.getLogoutTime() + ",");
+                    pw.print(record.getSessionId());
+                    pw.println();
+                }
+            }
+
+            JOptionPane.showMessageDialog(null, "Exported to: " + fileToSave.getAbsolutePath(), "Success",
+                    JOptionPane.INFORMATION_MESSAGE);
+
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error exporting file: " + ex.getMessage(), "Error",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    // This method generate a PDF from a List<SessionGroup>.
+    public void exportGroupedDataToPdf() {
+
+        if (!fileToSave.getName().toLowerCase().endsWith(".pdf")) {
+            fileToSave = new File(fileToSave.getAbsolutePath() + ".pdf");
+        }
+
+        try (PDDocument document = new PDDocument()) {
+
+            // Define fonts and colors needed for the heading and body
+            final PDType1Font BOLD_FONT = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+            final int HEADING_FONT_SIZE = 14;
+            final int HEADING_SPACE = 20;
+
+            for (SessionGroup group : selectedGroups) {
+                // Create a new page for the new group
+                PDPage page = new PDPage(PDRectangle.A4);
+                document.addPage(page);
+                PDPageContentStream contentStream = new PDPageContentStream(document, page);
+
+                int yPosition = 800; // Increased to give more room at the top
+                int margin = 50;
+                int cellHeight = 20;
+
+                // --- FIXED COLUMN COUNT ---
+                // 8 columns: Login Time, USN, Name, Sem, Dept, Subject, Batch, Logout Time
+                int colCount = 8;
+
+                int pageWidth = (int) page.getMediaBox().getWidth();
+                // The column widths calculation now uses the fixed count (8)
+                int[] columnWidths = calculateColumnWidths(colCount, pageWidth - 2 * margin);
+
+                // --- Draw Group Heading --
+
+                // Define constants for the heading box (adjust these values as needed)
+                final int BOX_HEIGHT = 55;
+                final int BOX_WIDTH = pageWidth - 2 * margin;
+                final int ROW_HEIGHT = BOX_HEIGHT / 2;
+                final int HEADING_PADDING = 3;
+                final Color HEADER_BOX_COLOR = new Color(240, 240, 240); // Light gray background
+                final Color BORDER_COLOR = Color.DARK_GRAY;
+
+                // Font Sizes for Hierarchy
+                final float PRIORITY_FONT_SIZE = 14; // Date, Subject, Dept
+                final float SECONDARY_FONT_SIZE = 12; // Slot, Sem, Batch
+
+                // Calculate the box's top-left corner
+                int boxY = yPosition - BOX_HEIGHT;
+                int boxX = margin;
+
+                // 1. Draw the box background
+                contentStream.setNonStrokingColor(HEADER_BOX_COLOR);
+                contentStream.addRect(boxX, boxY, BOX_WIDTH, BOX_HEIGHT);
+                contentStream.fill();
+                contentStream.setNonStrokingColor(Color.BLACK); // Reset for drawing text/lines
+
+                // 2. Draw all internal dividing lines (Borders and Separators)
+                contentStream.setStrokingColor(BORDER_COLOR);
+                contentStream.setLineWidth(0.5f);
+
+                // --- Horizontal Row Divider (Top Row / Bottom Row) ---
+                contentStream.moveTo(boxX, boxY + ROW_HEIGHT);
+                contentStream.lineTo(boxX + BOX_WIDTH, boxY + ROW_HEIGHT);
+
+                // --- Vertical Column Dividers ---
+
+                // Define column boundaries based on percentage width (100% total)
+                // Row 1: Date (30%) | Subject (50%) | Dept (420%)
+                int w1 = (int) (BOX_WIDTH * 0.30);
+                int w2 = (int) (BOX_WIDTH * 0.50);
+                int w3 = (int) (BOX_WIDTH * 0.20);
+
+                // Row 2: Slot (30%) | Lab No. (30) | Sem (20%) | Batch (20%)
+                int w4 = (int) (BOX_WIDTH * 0.30);
+                int w5 = (int) (BOX_WIDTH * 0.30);
+                int w6 = (int) (BOX_WIDTH * 0.20);
+                int w7 = (int) (BOX_WIDTH * 0.20);
+
+                // Column 1 Divider (at 30% width) - Applies to both rows
+                contentStream.moveTo(boxX + w1, boxY);
+                contentStream.lineTo(boxX + w1, boxY + BOX_HEIGHT);
+
+                // Column 2 Divider (at 30% + 50% = 80% width) - Applies to top row only
+                contentStream.moveTo(boxX + w1 + w2, boxY + ROW_HEIGHT);
+                contentStream.lineTo(boxX + w1 + w2, boxY + BOX_HEIGHT);
+
+                // Column 3 Divider (at 60% width) - Applies to bottom row only 
+                contentStream.moveTo(boxX + w4 + w5, boxY);
+                contentStream.lineTo(boxX + w4 + w5, boxY + ROW_HEIGHT);
+
+                // Column 4 Divider (at 60% + 20% = 80% width) - Applies to bottom row only
+                contentStream.moveTo(boxX + w4 + w5 + w6, boxY);
+                contentStream.lineTo(boxX + w4 + w5 + w6, boxY + ROW_HEIGHT);
+                contentStream.stroke();
+
+                // 3. Draw Text (Row 1: Date | Subject | Dept) - HIGH PRIORITY
+                float textX;
+                float textY1 = boxY + ROW_HEIGHT + HEADING_PADDING;
+
+                // === Column 1: Date ===
+                textX = boxX + HEADING_PADDING;
+                contentStream.beginText();
+                contentStream.setFont(BOLD_FONT, PRIORITY_FONT_SIZE);
+                contentStream.setNonStrokingColor(Color.BLACK);
+                contentStream.newLineAtOffset(textX, textY1);
+                contentStream.showText( group.date);
+                contentStream.endText();
+
+                // === Column 2: Subject ===
+                textX += w1;
+                contentStream.beginText();
+                contentStream.setFont(BOLD_FONT, PRIORITY_FONT_SIZE);
+                contentStream.setNonStrokingColor(Color.BLACK);
+                contentStream.newLineAtOffset(textX+(w2-w1)/2, textY1); //Text Centering 
+                contentStream.showText("Subject: " + group.sub);
+                contentStream.endText();
+
+                // === Column 3: Dept ===
+                textX += w2;
+                contentStream.beginText();
+                contentStream.setFont(BOLD_FONT, PRIORITY_FONT_SIZE);
+                contentStream.setNonStrokingColor(Color.BLACK);
+                contentStream.newLineAtOffset(textX, textY1);
+                contentStream.showText("Dept: " + group.dept);
+                contentStream.endText();
+
+                // 4. Draw Text (Row 2: Slot | Sem | Batch) - SECONDARY PRIORITY
+                float textY2 = boxY + HEADING_PADDING;
+                textX = boxX; // Reset X position
+
+                // === Column 4: Slot ===
+                contentStream.beginText();
+                contentStream.setFont(BOLD_FONT, SECONDARY_FONT_SIZE);
+                contentStream.setNonStrokingColor(Color.DARK_GRAY);
+                contentStream.newLineAtOffset(textX + HEADING_PADDING, textY2);
+                contentStream.showText(group.slot);
+                contentStream.endText();
+
+                // === Column 5: Lab Number ===
+                textX += w4;
+                contentStream.beginText();
+                contentStream.setFont(BOLD_FONT, SECONDARY_FONT_SIZE);
+                contentStream.setNonStrokingColor(Color.DARK_GRAY);
+                contentStream.newLineAtOffset(textX + HEADING_PADDING+ w5/5, textY2); //trying to Center
+                contentStream.showText("Lab No: 314");
+                contentStream.endText();
+
+                // === Column 6: Sem ===
+                textX += w5;
+                contentStream.beginText();
+                contentStream.setFont(BOLD_FONT, SECONDARY_FONT_SIZE);
+                contentStream.setNonStrokingColor(Color.DARK_GRAY);
+                contentStream.newLineAtOffset(textX + HEADING_PADDING, textY2);
+                contentStream.showText("Sem: " + group.sem);
+                contentStream.endText();
+
+                // === Column 6: Batch ===
+                textX += w6;
+                contentStream.beginText();
+                contentStream.setFont(BOLD_FONT, SECONDARY_FONT_SIZE);
+                contentStream.setNonStrokingColor(Color.DARK_GRAY);
+                contentStream.newLineAtOffset(textX + HEADING_PADDING, textY2);
+                contentStream.showText("Batch: " + group.batch);
+                contentStream.endText();
+
+                // 5. Update yPosition to start the table below the heading box
+                yPosition -= BOX_HEIGHT + 10; // Move down past the box, plus a small gap
+
+                // Reset stroking color for the main table lines
+                contentStream.setStrokingColor(Color.BLACK);
+                contentStream.setNonStrokingColor(Color.BLACK);
+
+                // --- Draw Table Headers for the Group ---
+                String[] headers = new String[] { "Login Time", "USN", "Name", "Sem", "Dept", "Subject", "Batch",
+                        "Logout Time" };
+                drawRow(contentStream, yPosition, margin, columnWidths, cellHeight, headers,
+                        new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), Color.GRAY);
+                yPosition -= cellHeight;
+
+                // --- Draw Group's Records ---
+                for (SessionRecord record : group.records) {
+                    String[] rowData = new String[] {
+                            record.getLoginTime().toLocalTime().toString(), record.getUsn(), record.getName(),
+                            record.getSem(), record.getDept(), record.getSub(),
+                            record.getBatch(), record.getLogoutTime().toLocalTime().toString()
+                    };
+                    drawRow(contentStream, yPosition, margin, columnWidths, cellHeight, rowData,
+                            new PDType1Font(Standard14Fonts.FontName.HELVETICA), Color.BLACK);
+                    yPosition -= cellHeight;
+
+                    // Handle pagination within the group if needed
+                    if (yPosition < margin) {
+                        contentStream.close();
+                        page = new PDPage(PDRectangle.A4);
+                        document.addPage(page);
+                        contentStream = new PDPageContentStream(document, page);
+                        yPosition = (int) page.getMediaBox().getHeight() - margin;
+
+                        // Optionally, redraw headers on the new page
+                        drawRow(contentStream, yPosition, margin, columnWidths, cellHeight, headers,
+                                new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), Color.GRAY);
+                        yPosition -= cellHeight;
+                    }
+                }
+                contentStream.close();
+            }
+
+            // **CODE TO SAVE THE DOCUMENT**
+            document.save(fileToSave);
+            document.close();
+
+            // Changed 'table' to 'null'
+            JOptionPane.showMessageDialog(null, "Exported to: " + fileToSave.getAbsolutePath(), "Success",
+                    JOptionPane.INFORMATION_MESSAGE);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error exporting file: " + ex.getMessage(), "Error",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private static void drawRow(PDPageContentStream contentStream, int y, int margin, int[] columnWidths, int height,
+            String[] cells, PDType1Font font, Color textColor) throws IOException {
+        contentStream.setStrokingColor(Color.BLACK);
+        float nextX = margin;
+
+        for (int i = 0; i < cells.length; i++) {
+            contentStream.setNonStrokingColor(Color.WHITE); // Cell background
+            contentStream.addRect(nextX, y - height, columnWidths[i], height);
+            contentStream.fill();
+            contentStream.setNonStrokingColor(textColor); // Text color
+
+            // Add cell text
+            contentStream.beginText();
+            contentStream.setFont(font, 10);
+            contentStream.newLineAtOffset(nextX + 5, y - height + 5);
+            contentStream.showText(cells[i]);
+            contentStream.endText();
+
+            // Add cell borders
+            contentStream.setNonStrokingColor(Color.BLACK);
+            contentStream.addRect(nextX, y - height, columnWidths[i], height);
+            contentStream.stroke();
+            nextX += columnWidths[i];
+        }
+    }
+
+    private static int[] calculateColumnWidths(int numColumns, int availableWidth) {
+        int[] widths = new int[numColumns];
+        int widthPerColumn = availableWidth / numColumns;
+        for (int i = 0; i < numColumns; i++) {
+            widths[i] = widthPerColumn;
+        }
+        return widths;
+    }
+}
 
 // Calendar
 class DatePicker {

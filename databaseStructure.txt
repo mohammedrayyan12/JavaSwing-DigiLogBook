@@ -19,5 +19,5 @@ INSERT or REPLACE INTO table_name (login_time, usn, name, sem, dept, sub, batch,
 ----> cmd for complitation and running (considering directories not altered)
 
 1. For Digi LogBook
-compilation: javac logBookData.java
-run : java -cp ./lib/mysql-connector-j-9.3.0.jar:./lib/sqlite-jdbc-3.50.3.0.jar:.  logBookData
+compilation: javac -cp ./lib/pdfbox-app-3.0.5.jar:. *.java
+run : java -cp ./lib/mysql-connector-j-9.3.0.jar:./lib/pdfbox-app-3.0.5.jar:./lib/sqlite-jdbc-3.50.3.0.jar:. logBookData
