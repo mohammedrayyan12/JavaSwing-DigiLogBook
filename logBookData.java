@@ -3,18 +3,21 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 
 import java.awt.*;
 import java.awt.event.*;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.sql.*;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
 
 class DataPlace {
-    JFrame jf;
-    JPanel view;
-    JPanel mainContent;
+    private JFrame jf;
+    private JPanel view;
+    private JPanel mainContent;
     static JTextField dateFrom, dateTo;
 	static JComboBox<String> startTime, endTime;
 	static JCheckBox everything;
@@ -89,11 +92,12 @@ class DataPlace {
 			e.printStackTrace();
 		}
 	}
-	public List<SessionGroup> getDatafromDataBase(String database, JPanel mainContent, String sSub, String sDept,
+	
+    public List<SessionGroup> getDatafromDataBase(String database, JPanel mainContent, String sSub, String sDept,
     String sSem, String sBatch) {
-        Connection connection = null;
 
         // configure which database to connect
+        Connection connection = null;
 		if (database.equals("temp")) {
 			connection = logBookData.manager.connection;
 		} else {
@@ -464,21 +468,40 @@ class DataPlace {
 
 		optionsPanel.add(new JLabel("  ")); //Spacer
 
-        String[] labSubjects = {"Subjects","Sub1","Sub2","Sub3","Sub4","Others"};
-        sub = new JComboBox<>(labSubjects); 
-        optionsPanel.add(sub);
+		try {
+			BufferedReader reader = new BufferedReader(new FileReader("./optionsData.csv")); 
+			String line;
 
-        String[] departments = {"Departments","Dept1","Dept2","Dept3","Dept4"};
-        department = new JComboBox<>(departments); 
-        optionsPanel.add(department);
+			int linesCount = (int) Files.lines(Paths.get("./optionsData.csv")).count();
 
-		String[] batches = {"Batches","I","II"};
-        batch = new JComboBox<>(batches); 
-        optionsPanel.add(batch);
+			String[] labSubjects = new String[linesCount];
+			String[] departments = new String[linesCount];
+			String[] batches = new String[linesCount];
+			String[] sems = new String[linesCount];
 
-		String[] sems = {"Semester", "1", "2", "3", "4", "5", "6", "7", "8"};
-        sem = new JComboBox<>(sems); 
-        optionsPanel.add(sem);
+			while ( (line = reader.readLine()) != null) {
+				if (line.contains("Subjects")) labSubjects = line.split(",");
+				
+				else if (line.contains("Departments")) departments = line.split(",");
+				
+				else if (line.contains("Batches")) batches = line.split(",");
+				else if (line.contains("Semester")) sems = line.split(",");
+			}
+		
+			sub = new JComboBox<>(labSubjects);
+			optionsPanel.add(sub);
+
+			department = new JComboBox<>(departments);
+			optionsPanel.add(department);
+
+			batch = new JComboBox<>(batches);
+			optionsPanel.add(batch);
+
+			sem = new JComboBox<>(sems);
+			optionsPanel.add(sem);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 
         optionsPanel.add(new JLabel("  ")); // Spacer
 
