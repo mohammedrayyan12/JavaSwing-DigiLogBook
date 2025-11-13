@@ -4,15 +4,19 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
+import java.util.stream.Collectors;
 
 class DataPlace {
     private JFrame jf;
@@ -27,6 +31,7 @@ class DataPlace {
     private JComboBox<String> sub, department, batch, sem;
     private static String base = System.getenv("DATABASE");
     static boolean matchSlotConditon = false;
+    private String editing = "nah";
 
     private final String JDBC_URL_cloud = System.getenv("JDBC_URL_cloud");
     private final String JDBC_URL_local = System.getenv("JDBC_URL_local"); // for now sqlite
@@ -107,6 +112,67 @@ class DataPlace {
 				System.out.println("Connection to sqlite failed: " + e.getMessage());
 			}
 		}
+
+        if (sSub.equals("+")) editing = "Subjects";
+		else if (sDept.equals("+")) editing = "Departments";
+		else if (sSem.equals("+")) editing = "Semester";
+		else if (sBatch.equals("+")) editing = "Batches";
+		if (!editing.equals("nah")) {
+			JDialog dialog = new JDialog(jf, editing, true);
+			dialog.setLayout(new BorderLayout());
+			JButton save = new JButton("Save");
+
+			JTextArea textArea = new JTextArea();
+			JScrollPane scrollPane = new JScrollPane(textArea);
+			dialog.add(scrollPane, BorderLayout.CENTER);
+			dialog.add(save, BorderLayout.SOUTH);
+
+			save.addActionListener( new ActionListener() {
+				public void actionPerformed(ActionEvent e) {
+					String newText = String.join(",", textArea.getText().split("\n")) ;
+					try {
+						// Read existing lines into a list
+						List<String> lines = Files.lines(Paths.get("./optionsData.csv")).collect(Collectors.toList());
+						
+						// Modify lines based on condition
+						for (int i = 0; i < lines.size(); i++) {
+							String existingLine = lines.get(i);
+							// Replace with new text if condition meets
+							if (existingLine.contains(editing)) {   
+								lines.set(i, newText.trim()); 
+							}
+						}
+						
+						// Write updated lines back to the file
+						try (BufferedWriter writer = new BufferedWriter(new FileWriter("./optionsData.csv"))) {
+							for (String line : lines) {
+								writer.write(line);
+								writer.newLine();
+							}
+						}
+					} catch (IOException ex) {
+						JOptionPane.showMessageDialog(null, "Error saving file: " + ex.getMessage());
+					}
+					dialog.dispose();
+    			    jf.remove(mainContent);
+			        showAddViewLogBookPanel();
+					
+				}
+			});
+
+			textArea.setText("");
+			try {
+			    Files.lines(Paths.get("./optionsData.csv")).forEach(line -> { if (line.contains(editing)) Arrays.stream(line.split(",")).forEach(word -> textArea.append(word + "\n")); });
+            } catch (IOException e) {
+				e.printStackTrace();
+			}
+			dialog.setSize(400, 280);
+			dialog.setLocationRelativeTo(mainContent);
+			dialog.setVisible(true);
+
+		};
+
+        editing = "nah";
 
 		// each entry is stored in records (EVERYTHING)
 		List<SessionGroup> groups = new ArrayList<>();
