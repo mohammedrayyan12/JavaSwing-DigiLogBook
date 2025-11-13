@@ -113,6 +113,7 @@ class DataPlace {
 			}
 		}
 
+		editing = "nah";
         if (sSub.equals("+")) editing = "Subjects";
 		else if (sDept.equals("+")) editing = "Departments";
 		else if (sSem.equals("+")) editing = "Semester";
@@ -129,7 +130,7 @@ class DataPlace {
 
 			save.addActionListener( new ActionListener() {
 				public void actionPerformed(ActionEvent e) {
-					String newText = String.join(",", textArea.getText().split("\n")) ;
+					String newText = String.join(",", textArea.getText().split("\n")) + ",   +";
 					try {
 						// Read existing lines into a list
 						List<String> lines = Files.lines(Paths.get("./optionsData.csv")).collect(Collectors.toList());
@@ -138,7 +139,7 @@ class DataPlace {
 						for (int i = 0; i < lines.size(); i++) {
 							String existingLine = lines.get(i);
 							// Replace with new text if condition meets
-							if (existingLine.contains(editing)) {   
+							if (existingLine.contains(editing)) {  
 								lines.set(i, newText.trim()); 
 							}
 						}
@@ -154,25 +155,25 @@ class DataPlace {
 						JOptionPane.showMessageDialog(null, "Error saving file: " + ex.getMessage());
 					}
 					dialog.dispose();
-    			    jf.remove(mainContent);
-			        showAddViewLogBookPanel();
 					
 				}
 			});
 
 			textArea.setText("");
 			try {
-			    Files.lines(Paths.get("./optionsData.csv")).forEach(line -> { if (line.contains(editing)) Arrays.stream(line.split(",")).forEach(word -> textArea.append(word + "\n")); });
-            } catch (IOException e) {
+			Files.lines(Paths.get("./optionsData.csv")).forEach(line -> { if (line.contains(editing)) Arrays.stream(line.split(",")).forEach(word -> {if (!word.contains("+")) textArea.append(word + "\n"); } );});
+			} catch (IOException e) {
 				e.printStackTrace();
 			}
 			dialog.setSize(400, 280);
 			dialog.setLocationRelativeTo(mainContent);
 			dialog.setVisible(true);
 
+			jf.remove(mainContent);
+			showAddViewLogBookPanel();
+			jf.revalidate();
+			jf.repaint();
 		};
-
-        editing = "nah";
 
 		// each entry is stored in records (EVERYTHING)
 		List<SessionGroup> groups = new ArrayList<>();
