@@ -3,6 +3,7 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -12,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 import java.util.Objects;
+import java.util.Properties;
 
 import javax.swing.*;
 
@@ -23,6 +25,30 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 
+class ConfigLoader {
+    // A single, static instance of Properties accessible application-wide
+    static final Properties config = new Properties();
+    private static final String CONFIG_FILE_PATH = "./config.properties";
+
+    /**
+     * This static block runs automatically once when the ConfigLoader class is first loaded 
+     * by the Java Virtual Machine. This handles the "loading on startup" part.
+     */
+    static {
+        System.out.println("Loading configuration from " + CONFIG_FILE_PATH);
+        try (FileReader reader = new FileReader(CONFIG_FILE_PATH)) {
+            config.load(reader);
+        } catch (IOException e) {
+            System.out.println("Config file not found or error reading. Starting with default settings.");
+            // You might want to create a blank file if it doesn't exist initially
+            try {
+                new File(CONFIG_FILE_PATH).createNewFile();
+            } catch (IOException createException) {
+                System.err.println("Could not create new config file.");
+            }
+        }
+    }
+}
 
 class ExportCsvPdf {
     private static File fileToSave;
