@@ -29,14 +29,14 @@ class DataPlace {
 	static JButton exportButton;
     private JPanel datePanel;
     private JComboBox<String> sub, department, batch, sem;
-    private static String base = System.getenv("DATABASE");
+    private static String table = ConfigLoader.config.getProperty("TABLE");
     static boolean matchSlotConditon = false;
     private String editing = "nah";
 
-    private final String JDBC_URL_cloud = System.getenv("JDBC_URL_cloud");
-    private final String JDBC_URL_local = System.getenv("JDBC_URL_local"); // for now sqlite
-	private final String USERNAME = System.getenv("JDBC_USERNAME_local");
-	private final String PASSWORD = System.getenv("JDBC_PASSWORD_local");
+    private final String JDBC_URL_cloud = ConfigLoader.config.getProperty("JDBC_URL_cloud");
+    private final String JDBC_URL_local = ConfigLoader.config.getProperty("JDBC_URL_local"); // for now sqlite
+	private final String USERNAME = ConfigLoader.config.getProperty("JDBC_USERNAME_local");
+	private final String PASSWORD = ConfigLoader.config.getProperty("JDBC_PASSWORD_local");
 
     DataPlace() {
 		jf = new JFrame("Data Zone");
@@ -49,7 +49,7 @@ class DataPlace {
 	}
 
     void syncDatabases() {
-        if (base.equals("temp")) return;
+        if (table.equals("temp")) return;
 
 		try (Connection cloudConn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME, PASSWORD);
 				Connection localConn = DriverManager.getConnection(JDBC_URL_local)) {
@@ -98,12 +98,12 @@ class DataPlace {
 		}
 	}
 	
-    public List<SessionGroup> getDatafromDataBase(String database, JPanel mainContent, String sSub, String sDept,
+    public List<SessionGroup> getDatafromDataBase(String table, JPanel mainContent, String sSub, String sDept,
     String sSem, String sBatch) {
 
         // configure which database to connect
         Connection connection = null;
-		if (database.equals("temp")) {
+		if (table.equals("temp")) {
 			connection = logBookData.manager.connection;
 		} else {
 			try {
@@ -181,7 +181,7 @@ class DataPlace {
         try {
 
 			// Create a StringBuilder to construct the query
-			StringBuilder showQueryBuilder = new StringBuilder("SELECT * FROM " + database + " WHERE 1=1");
+			StringBuilder showQueryBuilder = new StringBuilder("SELECT * FROM " + table + " WHERE 1=1");
 			List<String> params = new ArrayList<>();
 
 			// Conditionally append WHERE clauses
@@ -239,7 +239,7 @@ class DataPlace {
 				}
                 System.out.println("Data Retrived/Reloaded");
 
-				if (!database.equals("temp")) {
+				if (!table.equals("temp")) {
 					connection.close();
 				}
 
@@ -256,14 +256,14 @@ class DataPlace {
 
     }
 
-    void showData(String database, JPanel mainContent, String sSub, String sDept, String sSem, String sBatch) {
+    void showData(String table, JPanel mainContent, String sSub, String sDept, String sSem, String sBatch) {
 
 		// remove previously present content
 		if (mainContent.getComponentCount() > 1)
 			mainContent.remove(1);
 
 		// Grouped records
-		List<SessionGroup> groups = getDatafromDataBase(database, mainContent, sSub, sDept, sSem, sBatch);
+		List<SessionGroup> groups = getDatafromDataBase(table, mainContent, sSub, sDept, sSem, sBatch);
 
         JScrollPane scroll = new JScrollPane(new TimeGroupPanel(groups));
 
@@ -383,7 +383,7 @@ class DataPlace {
 				matchSlotConditon = !matchSlotConditon;
 			}
 			// Trigger data refresh
-            showData(base, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
+            showData(table, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
 				sem.getSelectedItem().toString().trim(), batch.getSelectedItem().toString().trim());
 		};
 
@@ -416,14 +416,149 @@ class DataPlace {
 		// view.setBackground(new Color(24, 25, 26));
 		view.setBorder(BorderFactory.createEmptyBorder(50, 50, 50, 50));
 
-		// Heading Panel at the Top (North)
-		JPanel headingPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
-		headingPanel.setOpaque(false);
-		JLabel title = new JLabel("Log book");
-		title.setFont(new Font("Arial", Font.BOLD, 48));
-		title.setForeground(Color.WHITE);
-		headingPanel.add(title);
-		view.add(headingPanel, BorderLayout.NORTH);
+// --- Start of Changes for Heading and Settings Button ---
+        // Top Panel (North) using BorderLayout for title (Center) and settings (East)
+        JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.setOpaque(false);
+        
+        // Heading Panel at the Top (North) - Keep it in the CENTER of topPanel
+        JPanel headingPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        headingPanel.setOpaque(false);
+        JLabel title = new JLabel("Log book");
+        title.setFont(new Font("Arial", Font.BOLD, 48));
+        title.setForeground(Color.WHITE);
+        headingPanel.add(title);
+        
+        // Settings Button Panel (East)
+        JPanel settingsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        settingsPanel.setOpaque(false);
+        
+        // Settings Button ⚙️
+        JButton settingsButton = new JButton("⚙️"); 
+        settingsButton.setFont(new Font("Arial", Font.PLAIN, 18));
+        settingsButton.setForeground(Color.WHITE);
+        settingsButton.setBackground(new Color(44, 44, 46)); // Dark background
+        settingsButton.setFocusPainted(false);
+        settingsButton.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10)); // Padding
+
+        settingsButton.addActionListener(e -> {
+            System.out.println("Settings button clicked!");
+
+            JDialog settingsDialog = new JDialog(jf, "Settings", true);
+            settingsDialog.setSize(400, 200); 
+            settingsDialog.setLocationRelativeTo(jf);
+            
+            // main panel with padding
+            JPanel mainPanel = new JPanel(new GridBagLayout());
+            GridBagConstraints gbc = new GridBagConstraints();
+            gbc.anchor = GridBagConstraints.WEST;
+            gbc.insets = new Insets(5, 10, 5, 10); // padding
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            gbc.weightx = 1.0;
+
+            JLabel cloudDatabaseLabel = new JLabel("Cloud Database Link:");
+            gbc.gridx = 0;
+            gbc.gridy = 0;
+            mainPanel.add(cloudDatabaseLabel, gbc);
+
+            JPanel sensitivePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            String cloud_Database = ConfigLoader.config.getProperty("JDBC_URL_cloud");
+
+            if (cloud_Database != null && !cloud_Database.isEmpty()) {
+                JTextField cloudDatabaseLinkField = new JTextField(cloud_Database, 25);
+                cloudDatabaseLinkField.setEditable(false);
+                JButton editButton = new JButton("Edit ✎");
+                
+                editButton.addActionListener(ee -> {
+                    cloudDatabaseLinkField.setEditable(!cloudDatabaseLinkField.isEditable());
+                    editButton.setText(cloudDatabaseLinkField.isEditable() ? "Save" : "Edit ✎");
+                    if (!cloudDatabaseLinkField.isEditable())
+                    try {
+                        ConfigLoader.config.setProperty("JDBC_URL_cloud", cloudDatabaseLinkField.getText());
+
+                        // Write the updated properties back to the file
+                        FileWriter writer = new FileWriter("./config.properties");
+                        ConfigLoader.config.store(writer, "Configuration settings updated by user interface");
+    
+                        JOptionPane.showMessageDialog(null, "Database info saved successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
+
+                    } catch (IOException ioException) {
+                        ioException.printStackTrace();
+                        JOptionPane.showMessageDialog(null, "Failed to write config file.", "File Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                });
+                
+                sensitivePanel.add(cloudDatabaseLinkField);
+                sensitivePanel.add(editButton);
+            } else {
+                JButton addCloudDatabaseButton = new JButton("Add Cloud Database Info");
+                addCloudDatabaseButton.addActionListener(ee -> {
+                    // --- Inner Dialog (Add Info) ---
+                    JDialog addInfoDialog = new JDialog(jf, "Add Cloud Database Info", true);
+                    addInfoDialog.setSize(350, 200);
+                    addInfoDialog.setLocationRelativeTo(settingsDialog); 
+                    addInfoDialog.setLayout(new GridBagLayout());
+                    
+                    GridBagConstraints innerGbc = new GridBagConstraints();
+                    innerGbc.fill = GridBagConstraints.HORIZONTAL;
+                    innerGbc.insets = new Insets(5, 10, 5, 10);
+                    innerGbc.weightx = 1.0;
+
+                    JTextField cloudJdbcLink = new JTextField(20);
+                    JPasswordField psswdField = new JPasswordField(20); // JPasswordField
+                    JButton saveButton = new JButton("Verify and Save");
+
+                    innerGbc.gridx = 0; innerGbc.gridy = 0; addInfoDialog.add(new JLabel("Enter JDBC Link *"), innerGbc);
+                    innerGbc.gridy = 1; addInfoDialog.add(cloudJdbcLink, innerGbc);
+                    innerGbc.gridy = 2; addInfoDialog.add(new JLabel("Enter password (if any)"), innerGbc);
+                    innerGbc.gridy = 3; addInfoDialog.add(psswdField, innerGbc);
+                    innerGbc.gridy = 4; addInfoDialog.add(saveButton, innerGbc);
+                    
+                    saveButton.addActionListener(eee -> {
+                        String jdbcLink = cloudJdbcLink.getText().trim();
+                        if (jdbcLink.isEmpty()) {
+                            JOptionPane.showMessageDialog(addInfoDialog, "JDBC Link cannot be blank.", "Invalid Input", JOptionPane.ERROR_MESSAGE);
+                            return;
+                        }
+                        try {
+                            ConfigLoader.config.setProperty("JDBC_URL_cloud", jdbcLink);
+
+                            // Write the updated properties back to the file
+                            FileWriter writer = new FileWriter("./config.properties");
+                            ConfigLoader.config.store(writer, "Configuration settings updated by user interface");
+        
+                            JOptionPane.showMessageDialog(addInfoDialog, "Database info saved successfully.", "Success", JOptionPane.INFORMATION_MESSAGE);
+
+                        } catch (IOException ioException) {
+                            ioException.printStackTrace();
+                            JOptionPane.showMessageDialog(addInfoDialog, "Failed to write config file.", "File Error", JOptionPane.ERROR_MESSAGE);
+                        }
+                        
+                        addInfoDialog.dispose();
+                        settingsDialog.dispose();
+                    });
+
+                    addInfoDialog.setVisible(true);
+                });
+                sensitivePanel.add(addCloudDatabaseButton);
+            }
+
+            gbc.gridy = 1; // Put sensitive panel on the next row visually
+            mainPanel.add(sensitivePanel, gbc);
+
+            // Add main panel to the center of the settings dialog
+            settingsDialog.add(mainPanel, BorderLayout.CENTER); 
+            settingsDialog.setVisible(true);
+        });
+
+        settingsPanel.add(settingsButton);
+
+        // Add components to the topPanel
+        topPanel.add(headingPanel, BorderLayout.CENTER);
+        topPanel.add(settingsPanel, BorderLayout.EAST);
+        
+        // Add the combined topPanel to the main view
+        view.add(topPanel, BorderLayout.NORTH);
 
 		// Content Panel in the Center
 		JPanel contentPanel = new JPanel(new GridBagLayout());
@@ -461,13 +596,13 @@ class DataPlace {
 		jf.add(view);
 
         addLogBook.addActionListener(e -> {
-            base = "temp";
+            table = "temp";
             if (importFromUserSelection())
                 showAddViewLogBookPanel();
         });
 
         viewLogBook.addActionListener(e -> {
-            base = System.getenv("DATABASE");
+            table = ConfigLoader.config.getProperty("TABLE");
             showAddViewLogBookPanel();
         });
     }
@@ -512,7 +647,7 @@ class DataPlace {
 		mainContent.add(createOptionsPanel(), BorderLayout.NORTH);
 
         syncDatabases();
-        showData(base, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
+        showData(table, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
 				sem.getSelectedItem().toString().trim(), batch.getSelectedItem().toString().trim());
 
 		jf.remove(view);
@@ -579,7 +714,7 @@ class DataPlace {
 		optionsPanel.add(exportButton);
 
         ActionListener actionListener = e -> 
- 			showData(base, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
+ 			showData(table, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
 			sem.getSelectedItem().toString().trim(), batch.getSelectedItem().toString().trim());
 
 		ActionListener actionListenerCombo = e ->{ 
