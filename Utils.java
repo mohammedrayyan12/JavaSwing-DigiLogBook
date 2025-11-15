@@ -7,6 +7,9 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -25,28 +28,83 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 
+class CloudDataBaseInfo {
+    
+    /**
+     * Attempts to verify the database connection using the provided credentials.
+     * This method is purely for connection checking and returns the status.
+     * It does NOT save the configuration or display dialogs.
+     * * @return true if the connection is successful, false otherwise.
+     */
+    public static boolean verification(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
+        try (Connection conn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME, PASSWORD)) {
+            // Connection successful
+            JOptionPane.showMessageDialog(
+                null, 
+                "Connection Validated.\nDatabase info saved.", 
+                "Verification Result", 
+                JOptionPane.INFORMATION_MESSAGE
+            );
+            return true; 
+        } catch (SQLException e) {
+            // Connection failed
+            e.printStackTrace();
+                       JOptionPane.showMessageDialog(
+                null, 
+                "Could not connect to JDBC Link.\nDatabase info saved.", 
+                "Verification Result", 
+                JOptionPane.WARNING_MESSAGE
+            );
+            return false;
+        }
+    }
+}
+
 class ConfigLoader {
     // A single, static instance of Properties accessible application-wide
     static final Properties config = new Properties();
     private static final String CONFIG_FILE_PATH = "./config.properties";
 
-    /**
-     * This static block runs automatically once when the ConfigLoader class is first loaded 
-     * by the Java Virtual Machine. This handles the "loading on startup" part.
-     */
     static {
         System.out.println("Loading configuration from " + CONFIG_FILE_PATH);
         try (FileReader reader = new FileReader(CONFIG_FILE_PATH)) {
             config.load(reader);
         } catch (IOException e) {
-            System.out.println("Config file not found or error reading. Starting with default settings.");
-            // You might want to create a blank file if it doesn't exist initially
+            System.out.println("Config file not found or error reading. Creating new file.");
             try {
-                new File(CONFIG_FILE_PATH).createNewFile();
+                // Ensure the file exists, creating it if necessary
+                File configFile = new File(CONFIG_FILE_PATH);
+                if (!configFile.exists()) {
+                    configFile.createNewFile();
+                }
             } catch (IOException createException) {
-                System.err.println("Could not create new config file.");
+                System.err.println("Could not create new config file: " + createException.getMessage());
             }
         }
+    }
+
+    /**
+     * Saves the current state of the properties object to the config file.
+     */
+    public static void saveProperties() {
+        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH)) { // Use try-with-resources
+            config.store(writer, "Configuration settings updated by user interface");
+        } catch (IOException ioException) {
+            ioException.printStackTrace();
+            // Use a standard Swing way to notify the user of a critical failure
+            JOptionPane.showMessageDialog(null, "Failed to write config file.", "File Save Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+    
+    /**
+     * Centralized method to update and save all cloud DB properties.
+     */
+    public static void saveCloudDbConfig(String url, String user, String password, boolean verified) {
+        config.setProperty("JDBC_URL_cloud", url);
+        config.setProperty("JDBC_USERNAME_cloud", user);
+        config.setProperty("JDBC_PASSWORD_cloud", password);
+        config.setProperty("CLOUD_DB_VERIFIED", String.valueOf(verified));
+        saveProperties();
     }
 }
 
