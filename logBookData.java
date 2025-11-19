@@ -29,14 +29,14 @@ class DataPlace {
 	static JButton exportButton;
     private JPanel datePanel;
     private JComboBox<String> sub, department, batch, sem;
-    private static String table = ConfigLoader.config.getProperty("TABLE");
+    private static String table = ConfigLoader.config.getProperty("LOCAL_TABLE"); 
     static boolean matchSlotConditon = false;
     private String editing = "nah";
 
-    private String JDBC_URL_cloud = ConfigLoader.config.getProperty("JDBC_URL_cloud");
-    private final String JDBC_URL_local = ConfigLoader.config.getProperty("JDBC_URL_local"); // for now sqlite
-	private String USERNAME_cloud = ConfigLoader.config.getProperty("JDBC_USERNAME_cloud");
-	private String PASSWORD_cloud = ConfigLoader.config.getProperty("JDBC_PASSWORD_cloud");
+    private static String JDBC_URL_cloud = ConfigLoader.config.getProperty("JDBC_URL_cloud");
+    private final static String JDBC_URL_local = ConfigLoader.config.getProperty("JDBC_URL_local"); // for now sqlite
+	private static String USERNAME_cloud = ConfigLoader.config.getProperty("JDBC_USERNAME_cloud");
+	private static String PASSWORD_cloud = ConfigLoader.config.getProperty("JDBC_PASSWORD_cloud");
 
     DataPlace() {
 		jf = new JFrame("Data Zone");
@@ -48,7 +48,7 @@ class DataPlace {
 		jf.setVisible(true);
 	}
 
-    void syncDatabases() {
+    static void syncDatabases() {
         if (table.equals("temp")) return;
 
 		try (Connection cloudConn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud);
@@ -56,7 +56,7 @@ class DataPlace {
 
 			// Setup local database table if it doesn't exist
 			try (Statement stmt = localConn.createStatement()) {
-				stmt.executeUpdate("CREATE TABLE IF NOT EXISTS student_log (" +
+				stmt.executeUpdate("CREATE TABLE IF NOT EXISTS " +  ConfigLoader.config.getProperty("LOCAL_TABLE") + " (" +
 						"session_id TEXT PRIMARY KEY, " +
 						"login_time TEXT, " +
 						"logout_time TEXT, " +
@@ -70,12 +70,12 @@ class DataPlace {
 			}
 
 			// Fetch all data from cloud
-			PreparedStatement cloudStmt = cloudConn.prepareStatement("SELECT * FROM dummyData");
+			PreparedStatement cloudStmt = cloudConn.prepareStatement("SELECT * FROM " + ConfigLoader.config.getProperty("CLOUD_TABLE"));
 			ResultSet cloudRs = cloudStmt.executeQuery();
 
 			// Insert into local database
 			localConn.setAutoCommit(false);
-			String insertSql = "INSERT or REPLACE INTO student_log(login_time, logout_time, usn, name, sem, dept, sub, batch, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+			String insertSql = "INSERT or REPLACE INTO " +  ConfigLoader.config.getProperty("LOCAL_TABLE") + " (login_time, logout_time, usn, name, sem, dept, sub, batch, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 			PreparedStatement localStmt = localConn.prepareStatement(insertSql);
 			while (cloudRs.next()) {
 				localStmt.setString(1, cloudRs.getString("login_time"));
@@ -95,6 +95,7 @@ class DataPlace {
 			System.out.println("Sync complete.");
 		} catch (SQLException e) {
 			e.printStackTrace();
+			System.out.println("Failed to Sync Databases");
 		}
 	}
 	
@@ -488,6 +489,7 @@ class DataPlace {
                 JButton editButton = new JButton("Edit ✎");
                 
                 editButton.addActionListener(ee -> {
+					cloudDatabaseLinkField.requestFocus();  //Input Focus
                     boolean isVisible = !cloudDatabaseUserField.isVisible();
                     verifiedorNot.setVisible(!isVisible); //Verified Label
                     cloudDatabaseLinkLabel.setVisible(isVisible); //Link Label
@@ -572,6 +574,8 @@ class DataPlace {
                         ConfigLoader.saveCloudDbConfig(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud, verification );
 
                         addInfoDialog.dispose();
+						settingsButton.doClick(); // to repaint Settings Dialog
+						settingsDialog.dispose();
                     });
 
                     addInfoDialog.setVisible(true);
@@ -643,7 +647,7 @@ class DataPlace {
         });
 
         viewLogBook.addActionListener(e -> {
-            table = ConfigLoader.config.getProperty("TABLE"); 
+            table = ConfigLoader.config.getProperty("LOCAL_TABLE"); 
             
             boolean isVerified = Boolean.parseBoolean(
                 ConfigLoader.config.getProperty("CLOUD_DB_VERIFIED", "false")
@@ -871,6 +875,7 @@ public class logBookData {
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
                 new DataPlace();
+                autoDelete.scheduleAutoDeleteTask();
             }
         });
     }

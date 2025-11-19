@@ -29,7 +29,7 @@ import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 
 class CloudDataBaseInfo {
-    
+
     /**
      * Attempts to verify the database connection using the provided credentials.
      * This method is purely for connection checking and returns the status.
@@ -49,7 +49,7 @@ class CloudDataBaseInfo {
         } catch (SQLException e) {
             // Connection failed
             e.printStackTrace();
-                       JOptionPane.showMessageDialog(
+            JOptionPane.showMessageDialog(
                 null, 
                 "Could not connect to JDBC Link.\nDatabase info saved.", 
                 "Verification Result", 
@@ -105,6 +105,36 @@ class ConfigLoader {
         config.setProperty("JDBC_PASSWORD_cloud", password);
         config.setProperty("CLOUD_DB_VERIFIED", String.valueOf(verified));
         saveProperties();
+    }
+
+    public static LocalDate getLocalLastRunDate() {
+        String dateStr = config.getProperty("local.auto.delete.last.run.date");
+        if (dateStr == null) {
+            return null;
+        }
+        return LocalDate.parse(dateStr);
+    }
+    
+    public static void setLocalLastRunDateToNow() throws IOException {
+        config.setProperty("local.auto.delete.last.run.date", LocalDate.now().toString());
+        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH)) {
+            config.store(writer, "Configuration settings updated by user interface");
+        }
+    }
+
+    public static LocalDate getCloudLastRunDate() {
+        String dateStr = config.getProperty("cloud.auto.delete.last.run.date");
+        if (dateStr == null) {
+            return null;
+        }
+        return LocalDate.parse(dateStr);
+    }
+
+    public static void setCloudLastRunDateToNow() throws IOException {
+        config.setProperty("cloud.auto.delete.last.run.date", LocalDate.now().toString());
+        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH)) {
+            config.store(writer, "Configuration settings updated by user interface");
+        }
     }
 }
 
