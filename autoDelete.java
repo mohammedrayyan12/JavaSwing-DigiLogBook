@@ -22,9 +22,12 @@ class autoDelete {
     private static void performLocalAutoDeleteAndExport(JFrame parentFrame) {
         LocalDate lastRun = ConfigLoader.getLocalLastRunDate();
         LocalDate now = LocalDate.now();
+        String durationLocal = ConfigLoader.config.getProperty("local.auto.delete.duration");
 
-        if (lastRun != null && lastRun.getMonth() == now.getMonth()) {
-            // It has already run this month, skip it.
+        if (lastRun != null && ChronoUnit.MONTHS.between(lastRun, now) < Integer.parseInt(durationLocal)) {
+            // It has already ran within duration, skip it.
+            System.out.println("Already done (LOCAL DB): " + (Integer.parseInt(durationLocal) - ChronoUnit.WEEKS.between(lastRun, now)) + " Month Left");
+
             return; 
         }
         
@@ -35,14 +38,13 @@ class autoDelete {
         String fileName = "Session_Records_" + now.format(formatter) + ".csv";
     
         // target file 
-        File saveFile = new File("./autoSave/", fileName);
+        File saveFile = new File(ConfigLoader.config.getProperty("auto.save.records.directory"), fileName);
 
     
         try (
             Connection conn = DriverManager.getConnection(ConfigLoader.config.getProperty("JDBC_URL_local"));
             PreparedStatement preparedStatement = conn.prepareStatement(showQuery);
             PreparedStatement deleteStatement = conn.prepareStatement(deleteQuery);
-            PrintWriter pw = new PrintWriter(new FileWriter(saveFile))
             )  {
             
             // Disable auto-commit for transaction safety
@@ -82,6 +84,8 @@ class autoDelete {
                 }
             }
 
+            PrintWriter pw = new PrintWriter(new FileWriter(saveFile));
+
             // Write the main header row
             for (int i = 0; i < headers.length; i++) {
                 pw.print(headers[i]);
@@ -103,13 +107,17 @@ class autoDelete {
                 pw.println();
             }
 
+            //close writer
+            pw.close();
+
             //delete the DB
-            deleteStatement.executeQuery();
+            // deleteStatement.executeQuery();
 
             conn.commit(); // Commit the changes
                 
             
             //Record that the task ran successfully in the config file
+            ConfigLoader.setAutoSaveDirectory(parentDir.getAbsolutePath());
             ConfigLoader.setLocalLastRunDateToNow(); 
 
             System.out.println("Local DB auto-delete and export complete.");
@@ -123,9 +131,11 @@ class autoDelete {
     private static void performCloudAutoDeleteAndSync(JFrame parentFrame) {
         LocalDate lastRun = ConfigLoader.getCloudLastRunDate();
         LocalDate now = LocalDate.now();
+        String durationCloud = ConfigLoader.config.getProperty("cloud.auto.delete.duration");
  
-        if (lastRun != null && ChronoUnit.DAYS.between(lastRun, now) < 7) {
-            // It has already run this week, skip it.
+        if (lastRun != null && ChronoUnit.WEEKS.between(lastRun, now) < Integer.parseInt(durationCloud)) {
+            // It has already ran within duration, skip it.
+            System.out.println("Already done (CLOUD DB): " + (Integer.parseInt(durationCloud) - ChronoUnit.WEEKS.between(lastRun, now)) + " Week Left");
             return; 
         }
 
@@ -144,13 +154,13 @@ class autoDelete {
             DataPlace.syncDatabases();
 
             //delete the DB
-            if (lastRun != null) deleteStatement.executeUpdate();
+            // if (lastRun != null) deleteStatement.executeUpdate();
 
             // Record it in config file
             ConfigLoader.setCloudLastRunDateToNow();
 
             System.out.println("Cloud DB auto-delete and sync complete.");
-            
+
         } catch (SQLException| IOException e) {
             e.printStackTrace();
             System.out.println("Failed to Auto Delete and Sync Cloud DB");

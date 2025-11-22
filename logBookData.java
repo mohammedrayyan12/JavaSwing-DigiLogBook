@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
 class DataPlace {
@@ -417,7 +418,6 @@ class DataPlace {
 		// view.setBackground(new Color(24, 25, 26));
 		view.setBorder(BorderFactory.createEmptyBorder(50, 50, 50, 50));
 
-// --- Start of Changes for Heading and Settings Button ---
         // Top Panel (North) using BorderLayout for title (Center) and settings (East)
         JPanel topPanel = new JPanel(new BorderLayout());
         topPanel.setOpaque(false);
@@ -446,153 +446,286 @@ class DataPlace {
             System.out.println("Settings button clicked!");
 
             JDialog settingsDialog = new JDialog(jf, "Settings", true);
-            settingsDialog.setSize(400, 200); 
+            settingsDialog.setMinimumSize(new Dimension(300,180));; 
             settingsDialog.setLocationRelativeTo(jf);
-            
-            // main panel with padding
-            JPanel mainPanel = new JPanel(new GridBagLayout());
-            GridBagConstraints gbc = new GridBagConstraints();
-            gbc.anchor = GridBagConstraints.WEST;
-            gbc.insets = new Insets(5, 10, 5, 10); // padding
-            gbc.fill = GridBagConstraints.HORIZONTAL;
-            gbc.weightx = 1.0;
 
-            JLabel cloudDatabaseLabel = new JLabel("Cloud Database");
-            JLabel cloudDatabaseLinkLabel = new JLabel("Cloud Database Link"); cloudDatabaseLinkLabel.setVisible(false);
-            JLabel cloudDatabaseUserLabel = new JLabel("Cloud Database Username:"); cloudDatabaseUserLabel.setVisible(false);
-            JLabel cloudDatabasePsswdLabel = new JLabel("Cloud Database Password:"); cloudDatabasePsswdLabel.setVisible(false);
+			Callable<JPanel> CloudDBConfig = () -> {
+				// main panel with padding
+				JPanel mainPanel = new JPanel(new GridBagLayout());
+				GridBagConstraints gbc = new GridBagConstraints();
+				gbc.anchor = GridBagConstraints.WEST;
+				gbc.insets = new Insets(5, 10, 5, 10); // padding
+				gbc.fill = GridBagConstraints.HORIZONTAL;
+				gbc.weightx = 1.0;
 
-            gbc.gridx = 0;
-            gbc.gridy = 0;
-            mainPanel.add(cloudDatabaseLabel, gbc);
+				JLabel cloudDatabaseLabel = new JLabel("Cloud Database Configuration");
+				JLabel cloudDatabaseLinkLabel = new JLabel("Cloud Database Link"); cloudDatabaseLinkLabel.setVisible(false);
+				JLabel cloudDatabaseUserLabel = new JLabel("Cloud Database Username:"); cloudDatabaseUserLabel.setVisible(false);
+				JLabel cloudDatabasePsswdLabel = new JLabel("Cloud Database Password:"); cloudDatabasePsswdLabel.setVisible(false);
 
-            JPanel sensitivePanel = new JPanel(new GridBagLayout());
-            GridBagConstraints gbcs = new GridBagConstraints();
-            gbcs.anchor = GridBagConstraints.WEST;
-            gbcs.fill = GridBagConstraints.HORIZONTAL;
-            gbcs.weightx = 1.0;
+				gbc.gridx = 0;
+				gbc.gridy = 0;
+				mainPanel.add(cloudDatabaseLabel, gbc);
 
-            boolean isVerified = Boolean.parseBoolean(ConfigLoader.config.getProperty("CLOUD_DB_VERIFIED", "false"));
-            JLabel verifiedorNot = (isVerified) ? new JLabel("Verfied"): new JLabel("Not Verified");
-            verifiedorNot.setFont(new Font("Arial", Font.BOLD, 14));
-            if (isVerified) verifiedorNot.setForeground(new Color(52, 199, 89));
-            else verifiedorNot.setForeground(Color.RED);
 
-            JDBC_URL_cloud = ConfigLoader.config.getProperty("JDBC_URL_cloud");
+				JPanel sensitivePanel = new JPanel(new GridBagLayout());
+				GridBagConstraints gbcs = new GridBagConstraints();
+				gbcs.anchor = GridBagConstraints.WEST;
+				gbcs.fill = GridBagConstraints.HORIZONTAL;
+				gbcs.weightx = 1.0;
 
-            if (JDBC_URL_cloud != null && !JDBC_URL_cloud.isEmpty()) {
-                JTextField cloudDatabaseLinkField = new JTextField(JDBC_URL_cloud, 25);
-                cloudDatabaseLinkField.setEditable(false);
-                JTextField cloudDatabaseUserField = new JTextField(USERNAME_cloud,25); cloudDatabaseUserField.setVisible(false);
-                JPasswordField cloudDatabasePsswdField = new JPasswordField(PASSWORD_cloud,25); cloudDatabasePsswdField.setVisible(false);
+				boolean isVerified = Boolean.parseBoolean(ConfigLoader.config.getProperty("CLOUD_DB_VERIFIED", "false"));
+				JLabel verifiedorNot = (isVerified) ? new JLabel("Verfied"): new JLabel("Not Verified");
+				verifiedorNot.setFont(new Font("Arial", Font.BOLD, 14));
+				if (isVerified) verifiedorNot.setForeground(new Color(52, 199, 89));
+				else verifiedorNot.setForeground(Color.RED);
 
-                JButton editButton = new JButton("Edit ✎");
-                
-                editButton.addActionListener(ee -> {
-					cloudDatabaseLinkField.requestFocus();  //Input Focus
-                    boolean isVisible = !cloudDatabaseUserField.isVisible();
-                    verifiedorNot.setVisible(!isVisible); //Verified Label
-                    cloudDatabaseLinkLabel.setVisible(isVisible); //Link Label
-                    cloudDatabaseUserLabel.setVisible(isVisible); //Username Label
-                    cloudDatabasePsswdLabel.setVisible(isVisible); //Password Label
-                    cloudDatabaseLinkField.setEditable(!cloudDatabaseLinkField.isEditable()); //Link field
-                    cloudDatabaseUserField.setVisible(!cloudDatabaseUserField.isVisible()); //Username field
-                    cloudDatabasePsswdField.setVisible(!cloudDatabasePsswdField.isVisible()); //Password field
+				JDBC_URL_cloud = ConfigLoader.config.getProperty("JDBC_URL_cloud");
 
-                    editButton.setText(cloudDatabaseLinkField.isEditable() ? "Verify" : "Edit ✎"); //Edit Button
-                    if (!cloudDatabaseLinkField.isEditable()) {        
-                        JDBC_URL_cloud = cloudDatabaseLinkField.getText().trim();
-                        USERNAME_cloud = cloudDatabaseUserField.getText().trim();
-                        PASSWORD_cloud = new String(cloudDatabasePsswdField.getPassword()).trim();
+				if (JDBC_URL_cloud != null && !JDBC_URL_cloud.isEmpty()) {
+					JTextField cloudDatabaseLinkField = new JTextField(JDBC_URL_cloud, 25);
+					cloudDatabaseLinkField.setEditable(false);
+					JTextField cloudDatabaseUserField = new JTextField(USERNAME_cloud,25); cloudDatabaseUserField.setVisible(false);
+					JPasswordField cloudDatabasePsswdField = new JPasswordField(PASSWORD_cloud,25); cloudDatabasePsswdField.setVisible(false);
 
-                        boolean verification = CloudDataBaseInfo.verification(JDBC_URL_cloud,USERNAME_cloud,PASSWORD_cloud);
+					JButton editButton = new JButton("Edit ✎");
+					
+					editButton.addActionListener(ee -> {
+						cloudDatabaseLinkField.requestFocus();  //Input Focus
+						boolean isVisible = !cloudDatabaseUserField.isVisible();
+						verifiedorNot.setVisible(!isVisible); //Verified Label
+						cloudDatabaseLinkLabel.setVisible(isVisible); //Link Label
+						cloudDatabaseUserLabel.setVisible(isVisible); //Username Label
+						cloudDatabasePsswdLabel.setVisible(isVisible); //Password Label
+						cloudDatabaseLinkField.setEditable(!cloudDatabaseLinkField.isEditable()); //Link field
+						cloudDatabaseUserField.setVisible(!cloudDatabaseUserField.isVisible()); //Username field
+						cloudDatabasePsswdField.setVisible(!cloudDatabasePsswdField.isVisible()); //Password field
 
-                        if(!verification) {
-                            verifiedorNot.setText("Not Verified");
-                            verifiedorNot.setForeground(Color.RED); 
-                        } else {
-                            verifiedorNot.setText("Verified");
-                            verifiedorNot.setForeground(new Color(52, 199, 89)); // Green
-                        }
-                        ConfigLoader.saveCloudDbConfig(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud, verification);
-                    }
-                });
-                gbcs.gridx= 0; gbcs.gridy=0; sensitivePanel.add(cloudDatabaseLinkLabel,gbcs);
-                gbcs.gridx= 0; gbcs.gridy=1; sensitivePanel.add(cloudDatabaseLinkField,gbcs);
-                gbcs.gridx=1; sensitivePanel.add(editButton,gbcs);
-                gbcs.gridx= 0; gbcs.gridy=2; sensitivePanel.add(cloudDatabaseUserLabel,gbcs);
-                gbcs.gridy=3; sensitivePanel.add(cloudDatabaseUserField,gbcs);
-                gbcs.gridy = 4; sensitivePanel.add(cloudDatabasePsswdLabel,gbcs);
-                gbcs.gridy = 5; sensitivePanel.add(cloudDatabasePsswdField,gbcs);
+						editButton.setText(cloudDatabaseLinkField.isEditable() ? "Verify" : "Edit ✎"); //Edit Button
+						if (!cloudDatabaseLinkField.isEditable()) {        
+							JDBC_URL_cloud = cloudDatabaseLinkField.getText().trim();
+							USERNAME_cloud = cloudDatabaseUserField.getText().trim();
+							PASSWORD_cloud = new String(cloudDatabasePsswdField.getPassword()).trim();
 
-            } else {
-                verifiedorNot.setVisible(false);
-                JButton addCloudDatabaseButton = new JButton("Add Cloud Database Info");
-                addCloudDatabaseButton.addActionListener(ee -> {
-                    // --- Inner Dialog (Add Info) ---
-                    JDialog addInfoDialog = new JDialog(jf, "Add Cloud Database Info", true);
-                    addInfoDialog.setSize(350, 300);
-                    addInfoDialog.setLocationRelativeTo(settingsDialog); 
-                    addInfoDialog.setLayout(new GridBagLayout());
-                    
-                    GridBagConstraints innerGbc = new GridBagConstraints();
-                    innerGbc.fill = GridBagConstraints.HORIZONTAL;
-                    innerGbc.insets = new Insets(5, 10, 5, 10);
-                    innerGbc.weightx = 1.0;
+							boolean verification = CloudDataBaseInfo.verification(JDBC_URL_cloud,USERNAME_cloud,PASSWORD_cloud);
 
-                    JTextField cloudDatabaseLinkField = new JTextField(20);
-                    JTextField cloudDatabaseUserField = new JTextField(20);
-                    JPasswordField cloudDatabasePsswdField = new JPasswordField(20); // JPasswordField
-                    JButton saveButton = new JButton("Verify and Save");
+							if(!verification) {
+								verifiedorNot.setText("Not Verified");
+								verifiedorNot.setForeground(Color.RED); 
+							} else {
+								verifiedorNot.setText("Verified");
+								verifiedorNot.setForeground(new Color(52, 199, 89)); // Green
+							}
+							ConfigLoader.saveCloudDbConfig(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud, verification);
+						}
+						settingsDialog.pack();
+					});
+					gbcs.gridx= 0; gbcs.gridy=0; sensitivePanel.add(cloudDatabaseLinkLabel,gbcs);
+					gbcs.gridx= 0; gbcs.gridy=1; sensitivePanel.add(cloudDatabaseLinkField,gbcs);
+					gbcs.gridx=1; sensitivePanel.add(editButton,gbcs);
+					gbcs.gridx= 0; gbcs.gridy=2; sensitivePanel.add(cloudDatabaseUserLabel,gbcs);
+					gbcs.gridy=3; sensitivePanel.add(cloudDatabaseUserField,gbcs);
+					gbcs.gridy = 4; sensitivePanel.add(cloudDatabasePsswdLabel,gbcs);
+					gbcs.gridy = 5; sensitivePanel.add(cloudDatabasePsswdField,gbcs);
 
-                    innerGbc.gridx = 0; innerGbc.gridy = 0; addInfoDialog.add(new JLabel("<html>Enter JDBC Link <font color='red'>*</font></html>"), innerGbc);
-                    innerGbc.gridy = 1; addInfoDialog.add(cloudDatabaseLinkField, innerGbc);
-                    innerGbc.gridy = 2; addInfoDialog.add(new JLabel("Enter Username (if any)"), innerGbc);    
-                    innerGbc.gridy = 3; addInfoDialog.add(cloudDatabaseUserField, innerGbc);                
-                    innerGbc.gridy = 4; addInfoDialog.add(new JLabel("Enter password (if any)"), innerGbc);
-                    innerGbc.gridy = 5; addInfoDialog.add(cloudDatabasePsswdField, innerGbc);
-                    innerGbc.gridy = 6; addInfoDialog.add(saveButton, innerGbc);
-                    
-                    saveButton.addActionListener(eee -> {
-                        if (cloudDatabaseLinkField.getText().trim().isEmpty()) {
-                            JOptionPane.showMessageDialog(addInfoDialog, "JDBC Link cannot be blank.", "Invalid Input", JOptionPane.ERROR_MESSAGE);
-                            return;
-                        }                            
-                        JDBC_URL_cloud = cloudDatabaseLinkField.getText().trim();
-                        USERNAME_cloud = cloudDatabaseUserField.getText().trim();
-                        PASSWORD_cloud = new String(cloudDatabasePsswdField.getPassword()).trim();
 
-                        boolean verification = CloudDataBaseInfo.verification(JDBC_URL_cloud,USERNAME_cloud,PASSWORD_cloud);
-                       if(!verification) {
-                            verifiedorNot.setText("Not Verified");
-                            verifiedorNot.setForeground(Color.RED); 
-                        } else {
-                            verifiedorNot.setText("Verified");
-                            verifiedorNot.setForeground(new Color(52, 199, 89)); // Green
-                        }
+				} else {
+					verifiedorNot.setVisible(false);
+					JButton addCloudDatabaseButton = new JButton("Add Cloud Database Info");
+					addCloudDatabaseButton.addActionListener(ee -> {
+						// --- Inner Dialog (Add Info) ---
+						JDialog addInfoDialog = new JDialog(jf, "Add Cloud Database Info", true);
+						addInfoDialog.setSize(350, 300);
+						addInfoDialog.setLocationRelativeTo(settingsDialog); 
+						addInfoDialog.setLayout(new GridBagLayout());
+						
+						GridBagConstraints innerGbc = new GridBagConstraints();
+						innerGbc.fill = GridBagConstraints.HORIZONTAL;
+						innerGbc.insets = new Insets(5, 10, 5, 10);
+						innerGbc.weightx = 1.0;
 
-                        ConfigLoader.saveCloudDbConfig(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud, verification );
+						JTextField cloudDatabaseLinkField = new JTextField(20);
+						JTextField cloudDatabaseUserField = new JTextField(20);
+						JPasswordField cloudDatabasePsswdField = new JPasswordField(20); // JPasswordField
+						JButton saveButton = new JButton("Verify and Save");
 
-                        addInfoDialog.dispose();
-						settingsButton.doClick(); // to repaint Settings Dialog
-						settingsDialog.dispose();
-                    });
+						innerGbc.gridx = 0; innerGbc.gridy = 0; addInfoDialog.add(new JLabel("<html>Enter JDBC Link <font color='red'>*</font></html>"), innerGbc);
+						innerGbc.gridy = 1; addInfoDialog.add(cloudDatabaseLinkField, innerGbc);
+						innerGbc.gridy = 2; addInfoDialog.add(new JLabel("Enter Username (if any)"), innerGbc);    
+						innerGbc.gridy = 3; addInfoDialog.add(cloudDatabaseUserField, innerGbc);                
+						innerGbc.gridy = 4; addInfoDialog.add(new JLabel("Enter password (if any)"), innerGbc);
+						innerGbc.gridy = 5; addInfoDialog.add(cloudDatabasePsswdField, innerGbc);
+						innerGbc.gridy = 6; addInfoDialog.add(saveButton, innerGbc);
+						
+						saveButton.addActionListener(eee -> {
+							if (cloudDatabaseLinkField.getText().trim().isEmpty()) {
+								JOptionPane.showMessageDialog(addInfoDialog, "JDBC Link cannot be blank.", "Invalid Input", JOptionPane.ERROR_MESSAGE);
+								return;
+							}                            
+							JDBC_URL_cloud = cloudDatabaseLinkField.getText().trim();
+							USERNAME_cloud = cloudDatabaseUserField.getText().trim();
+							PASSWORD_cloud = new String(cloudDatabasePsswdField.getPassword()).trim();
 
-                    addInfoDialog.setVisible(true);
-                });
-                sensitivePanel.add(addCloudDatabaseButton);
-            }
+							boolean verification = CloudDataBaseInfo.verification(JDBC_URL_cloud,USERNAME_cloud,PASSWORD_cloud);
+							if(!verification) {
+								verifiedorNot.setText("Not Verified");
+								verifiedorNot.setForeground(Color.RED); 
+							} else {
+								verifiedorNot.setText("Verified");
+								verifiedorNot.setForeground(new Color(52, 199, 89)); // Green
+							}
 
-            gbc.gridy = 1; // Put sensitive panel on the next row visually
-            mainPanel.add(sensitivePanel, gbc);
+							ConfigLoader.saveCloudDbConfig(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud, verification );
 
-            gbc.gridy = 2;
-            gbc.anchor = GridBagConstraints.CENTER;   // Center the component within its cell
-            gbc.fill = GridBagConstraints.NONE; 
-            mainPanel.add(verifiedorNot,gbc);   //reset anchor and fill if any addition 
+							addInfoDialog.dispose();
+							settingsDialog.dispose();
+							settingsButton.doClick(); // to repaint Settings Dialog
+						});
 
-            // Add main panel to the center of the settings dialog
-            settingsDialog.add(mainPanel, BorderLayout.CENTER); 
+						addInfoDialog.setVisible(true);
+					});
+					sensitivePanel.add(addCloudDatabaseButton);
+				}
+
+				gbc.gridy = 1; // Put sensitive panel on the next row visually
+				mainPanel.add(sensitivePanel, gbc);
+
+				gbc.gridy = 2;
+				gbc.anchor = GridBagConstraints.CENTER;   // Center the component within its cell
+				gbc.fill = GridBagConstraints.NONE; 
+				mainPanel.add(verifiedorNot,gbc); 
+
+				return mainPanel;
+			};
+
+			Callable<JPanel> AutoDeleteConfig = () -> {
+				JPanel mainPanel = new JPanel();
+				mainPanel.setLayout(new GridBagLayout());
+				GridBagConstraints gbc = new GridBagConstraints();
+				gbc.insets = new Insets(5, 10, 5, 10); 
+				gbc.fill = GridBagConstraints.HORIZONTAL; 
+				gbc.weightx = 1.0; 
+
+				// --- AutoSave Label ---
+				JLabel autoSaveLabel = new JLabel("Auto Save Directory");
+				gbc.gridx = 0;
+				gbc.gridy = 0;
+				gbc.weighty = 0.0; 
+				mainPanel.add(autoSaveLabel, gbc);
+
+				// --- Path to save file ---
+				JTextArea autoSaveDir = new JTextArea();
+				autoSaveDir.setEditable(false);
+				autoSaveDir.setLineWrap(true);
+				autoSaveDir.setWrapStyleWord(true);
+				autoSaveDir.setText(ConfigLoader.config.getProperty("auto.save.records.directory"));
+
+				JScrollPane scrollPane = new JScrollPane(autoSaveDir);
+				gbc.gridx = 0;
+				gbc.gridy = 1;
+				gbc.weighty = 1.0; 
+				mainPanel.add(scrollPane, gbc);
+ 
+				//Mouse Listener to Set AutoSave Directory
+				autoSaveDir.addMouseListener(new MouseAdapter() {
+					public void mouseClicked(MouseEvent e) {
+						System.out.println("Text Area Clicked");
+
+						JFileChooser fileChooser = new JFileChooser();
+
+						// Configure the file chooser to select directories only
+						fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+						
+						// Set a default starting directory as current working directory
+						fileChooser.setCurrentDirectory(new File(ConfigLoader.config.getProperty("auto.save.records.directory")));
+
+						int result = fileChooser.showSaveDialog(autoSaveDir);
+
+						if (result == JFileChooser.APPROVE_OPTION) {
+							File selectedDirectory = fileChooser.getSelectedFile();
+							
+							String absolutePath = selectedDirectory.getAbsolutePath();
+							ConfigLoader.setAutoSaveDirectory(absolutePath);
+							autoSaveDir.setText(absolutePath);
+
+							JOptionPane.showMessageDialog(jf, 
+								"AutoSave directory set to: \n" + absolutePath, 
+								"Location Selected", 
+								JOptionPane.INFORMATION_MESSAGE);	
+						} else if (result == JFileChooser.CANCEL_OPTION) {
+							// User cancelled the dialog
+							System.out.println("Folder selection cancelled by user.");
+						}
+						settingsDialog.pack();
+					}
+				});
+				
+
+				// --- Recent Cleanup ---
+				JLabel cleanUpL = new JLabel("Recent Cleanup (Local DB): " + ConfigLoader.config.getProperty("local.auto.delete.last.run.date"));  
+				gbc.gridy = 2; mainPanel.add(cleanUpL,gbc);
+
+				JLabel cleanUpC = new JLabel("Recent Cleanup (Cloud DB): " + ConfigLoader.config.getProperty("cloud.auto.delete.last.run.date"));  
+				gbc.gridy = 3; mainPanel.add(cleanUpC,gbc);
+
+				// --- Time Duration to delete (Local) ---
+				JPanel timeDuration = new JPanel(new GridLayout(2, 2));
+				JLabel timeDurationLocalLabel = new JLabel("Duration of cleanup (Local DB):  "); timeDuration.add(timeDurationLocalLabel); 
+
+				JComboBox timeDurationLocal = new JComboBox<>(new String[] {"1 Month", "3 Months", "6 Months", "9 Months", "12 Months"}); timeDuration.add(timeDurationLocal);
+
+				// --- Time Duration to delete (Cloud) ---
+				JLabel timeDurationCloudLabel = new JLabel("Duration of cleanup (Cloud DB):  "); timeDuration.add(timeDurationCloudLabel); 
+
+				JComboBox timeDurationCloud = new JComboBox<>(new String[] {"1 Week", "2 Weeks", "3 Weeks", "4 Weeks"}); timeDuration.add(timeDurationCloud);
+
+
+				gbc.gridy = 4; mainPanel.add(timeDuration,gbc);
+
+				// Calculate index to set 
+				timeDurationLocal.setSelectedIndex(Integer.parseInt(ConfigLoader.config.getProperty("local.auto.delete.duration")) / 3);
+				timeDurationCloud.setSelectedIndex(Integer.parseInt(ConfigLoader.config.getProperty("cloud.auto.delete.duration")) - 1);
+
+				//Action Listeners
+				timeDurationLocal.addActionListener(ee -> {
+					String selectedDuration = (String) timeDurationLocal.getSelectedItem();
+
+					String[] parts = selectedDuration.split(" ");
+					int duration = Integer.parseInt(parts[0]);
+
+					ConfigLoader.setAutoDeleteDuration("local.auto.delete.duration", String.valueOf(duration));
+					System.out.println("(LOCAL DB) Auto Delete Duration set to: " + duration);
+				});
+
+				timeDurationCloud.addActionListener(ee -> {
+					String selectedDuration = (String) timeDurationCloud.getSelectedItem();
+
+					String[] parts = selectedDuration.split(" ");
+					int duration = Integer.parseInt(parts[0]);
+					
+					ConfigLoader.setAutoDeleteDuration("cloud.auto.delete.duration", String.valueOf(duration));
+					System.out.println("(CLOUD DB) Auto Delete Duration set to: " + duration);
+				});
+				return mainPanel;
+			};
+
+			JTabbedPane ooptions = new JTabbedPane();
+
+			try {
+				ooptions.addTab("Cloud Database", CloudDBConfig.call());
+				ooptions.addTab("Auto Save/Delete", AutoDeleteConfig.call());
+			} catch (Exception e1) {
+				System.err.println("ERROR: While Adding Tabs to Settings Dialog");
+				e1.printStackTrace();
+			}
+			ooptions.addChangeListener(ee -> {
+				settingsDialog.pack();
+			});
+			
+			// Add main panel to the center of the settings dialog
+            settingsDialog.add(ooptions, BorderLayout.CENTER); 
+
+			settingsDialog.pack();
             settingsDialog.setVisible(true);
         });
 
@@ -662,7 +795,7 @@ class DataPlace {
                     "Cloud Database is not Configured or Verified.", 
                     "Verification Required", 
                     JOptionPane.OK_CANCEL_OPTION, 
-                    JOptionPane.WARNING_MESSAGE, // Use a warning icon
+                    JOptionPane.WARNING_MESSAGE,
                     null, 
                     options, 
                     options[0]
@@ -671,7 +804,6 @@ class DataPlace {
                 if (choice == JOptionPane.OK_OPTION) {
                     settingsButton.doClick(); 
                 }
-                // If 'Maybe Later' is chosen, the action simply returns
             }
         });
    
@@ -740,8 +872,7 @@ class DataPlace {
 
 		optionsPanel.add(new JLabel("  ")); //Spacer
 
-		try {
-			BufferedReader reader = new BufferedReader(new FileReader("./optionsData.csv")); 
+		try (BufferedReader reader = new BufferedReader(new FileReader("./optionsData.csv")); ){
 			String line;
 
 			int linesCount = (int) Files.lines(Paths.get("./optionsData.csv")).count();

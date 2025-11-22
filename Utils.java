@@ -136,6 +136,24 @@ class ConfigLoader {
             config.store(writer, "Configuration settings updated by user interface");
         }
     }
+    
+    public static void setAutoSaveDirectory(String location) {
+        config.setProperty("auto.save.records.directory", location);
+        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH)) {
+            config.store(writer, "Configuration settings updated by user interface");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void setAutoDeleteDuration(String property,String duration) {
+        config.setProperty(property, duration);
+        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH)) {
+            config.store(writer, "Configuration settings updated by user interface");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
 
 class ExportCsvPdf {
