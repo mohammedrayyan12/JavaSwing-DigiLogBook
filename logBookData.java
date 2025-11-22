@@ -811,24 +811,26 @@ class DataPlace {
 
     boolean importFromUserSelection() {
         JFileChooser fileChooser = new JFileChooser();
-		fileChooser.setDialogTitle("Select a CSV file to import");
-		fileChooser.setCurrentDirectory(new File("./") );
-
+		fileChooser.setDialogTitle("Select CSV files to import");
+		
         //filter to show only folders/CSV files in current directory
         FileNameExtensionFilter filter = new FileNameExtensionFilter("CSV Files", "csv"); 
 		fileChooser.setFileFilter(filter);
+		fileChooser.setMultiSelectionEnabled(true);
 
 		int userSelection = fileChooser.showOpenDialog(null); 
         if (userSelection == JFileChooser.APPROVE_OPTION) {
 
-			File selectedFile = fileChooser.getSelectedFile();
-            String csvFilePath = selectedFile.getAbsolutePath();
-
+			File[] selectedFiles = fileChooser.getSelectedFiles();
+            
 			try {
 				logBookData.manager = new AddLogbookManager();
-				// Call the import method with the user-selected file path
-				logBookData.manager.importCsvToDatabase(csvFilePath);
-				JOptionPane.showMessageDialog(null, "Successfully imported data from " + selectedFile.getName(),
+				for (File file: selectedFiles) {
+					// Call the import method with the user-selected file path
+					String csvFilePath = file.getAbsolutePath();
+					logBookData.manager.importCsvToDatabase(csvFilePath);
+				}
+				JOptionPane.showMessageDialog(null, "Successfully imported data from " + selectedFiles.length + " File",
 						"Import Complete", JOptionPane.INFORMATION_MESSAGE);
 				return true;
 			} catch (IOException | SQLException e) {
@@ -867,7 +869,7 @@ class DataPlace {
 		optionsPanel.add(backButton);
 
         //Add "Refresh" button
-        JButton refresh = new JButton("⟳");
+        JButton refresh = (table.equals("temp")) ? new JButton("+") : new JButton("⟳");
 		optionsPanel.add(refresh);
 
 		optionsPanel.add(new JLabel("  ")); //Spacer
@@ -937,8 +939,40 @@ class DataPlace {
 		endTime.addActionListener(actionListenerCombo);
 
 		refresh.addActionListener(e -> {
-			syncDatabases();;
-            actionListener.actionPerformed(e);
+			if (refresh.getText().contentEquals("+")) {
+				JFileChooser fileChooser = new JFileChooser();
+				fileChooser.setDialogTitle("Select CSV files to import");
+				
+				//filter to show only folders/CSV files in current directory
+				FileNameExtensionFilter filter = new FileNameExtensionFilter("CSV Files", "csv"); 
+				fileChooser.setFileFilter(filter);
+				fileChooser.setMultiSelectionEnabled(true);
+
+				int userSelection = fileChooser.showOpenDialog(null); 
+				if (userSelection == JFileChooser.APPROVE_OPTION) {
+
+					File[] selectedFiles = fileChooser.getSelectedFiles();
+					
+					try {
+						for (File file: selectedFiles) {
+							// Call the import method with the user-selected file path
+							String csvFilePath = file.getAbsolutePath();
+							logBookData.manager.importCsvToDatabase(csvFilePath);
+						}
+						JOptionPane.showMessageDialog(null, "Successfully imported data from " + selectedFiles.length + " File",
+								"Import Complete", JOptionPane.INFORMATION_MESSAGE);
+					} catch (IOException | SQLException ee) {
+						JOptionPane.showMessageDialog(null, "Error importing data: " + ee.getMessage(), "Import Error",
+								JOptionPane.ERROR_MESSAGE);
+						ee.printStackTrace();
+					}
+					actionListener.actionPerformed(e);
+				}
+
+			} else {
+				syncDatabases();;
+            	actionListener.actionPerformed(e);
+			}
 		});
 
 		backButton.addActionListener(e -> {
