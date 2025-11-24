@@ -135,7 +135,7 @@ class DataPlace {
 					String newText = String.join(",", textArea.getText().split("\n")) + ",   +";
 					try {
 						// Read existing lines into a list
-						List<String> lines = Files.lines(Paths.get("./optionsData.csv")).collect(Collectors.toList());
+						List<String> lines = Files.lines(OptionsManager.PERSISTENT_FILE_PATH).collect(Collectors.toList());
 						
 						// Modify lines based on condition
 						for (int i = 0; i < lines.size(); i++) {
@@ -147,7 +147,7 @@ class DataPlace {
 						}
 						
 						// Write updated lines back to the file
-						try (BufferedWriter writer = new BufferedWriter(new FileWriter("./optionsData.csv"))) {
+						try (BufferedWriter writer = new BufferedWriter(new FileWriter(OptionsManager.PERSISTENT_FILE_PATH.toFile()))) {
 							for (String line : lines) {
 								writer.write(line);
 								writer.newLine();
@@ -163,7 +163,7 @@ class DataPlace {
 
 			textArea.setText("");
 			try {
-			Files.lines(Paths.get("./optionsData.csv")).forEach(line -> { if (line.contains(editing)) Arrays.stream(line.split(",")).forEach(word -> {if (!word.contains("+")) textArea.append(word + "\n"); } );});
+			Files.lines(OptionsManager.PERSISTENT_FILE_PATH).forEach(line -> { if (line.contains(editing)) Arrays.stream(line.split(",")).forEach(word -> {if (!word.contains("+")) textArea.append(word + "\n"); } );});
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -874,10 +874,10 @@ class DataPlace {
 
 		optionsPanel.add(new JLabel("  ")); //Spacer
 
-		try (BufferedReader reader = new BufferedReader(new FileReader("./optionsData.csv")); ){
+		try (BufferedReader reader = new BufferedReader(new FileReader(OptionsManager.PERSISTENT_FILE_PATH.toFile())); ){
 			String line;
-
-			int linesCount = (int) Files.lines(Paths.get("./optionsData.csv")).count();
+			
+    		int linesCount = (int) Files.lines(OptionsManager.PERSISTENT_FILE_PATH).count();
 
 			String[] labSubjects = new String[linesCount];
 			String[] departments = new String[linesCount];
@@ -906,6 +906,7 @@ class DataPlace {
 			optionsPanel.add(sem);
 		} catch (IOException e) {
 			e.printStackTrace();
+			JOptionPane.showMessageDialog(null, "Failed to read user options file.", "Read Error", JOptionPane.ERROR_MESSAGE);
 		}
 
         optionsPanel.add(new JLabel("  ")); // Spacer

@@ -3,10 +3,15 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -61,24 +66,59 @@ class CloudDataBaseInfo {
 }
 
 class ConfigLoader {
+
     // A single, static instance of Properties accessible application-wide
     static final Properties config = new Properties();
-    private static final String CONFIG_FILE_PATH = "./config.properties";
+
+    // --- Persistence Setup (Safe Location ) ---
+    private static final String APP_DIR_NAME = "DigiLogBook";
+    private static final String CONFIG_FILE_NAME = "config.properties";
+
+    private static final Path CONFIG_DIR_PATH = Paths.get(System.getProperty("user.home"), "." + APP_DIR_NAME);
+    private static final Path CONFIG_FILE_PATH = CONFIG_DIR_PATH.resolve(CONFIG_FILE_NAME);
+    
+    // The internal name of the template file inside the JAR
+    private static final String CONFIG_TEMPLATE_NAME = "config.properties";
 
     static {
-        System.out.println("Loading configuration from " + CONFIG_FILE_PATH);
-        try (FileReader reader = new FileReader(CONFIG_FILE_PATH)) {
-            config.load(reader);
-        } catch (IOException e) {
-            System.out.println("Config file not found or error reading. Creating new file.");
-            try {
-                // Ensure the file exists, creating it if necessary
-                File configFile = new File(CONFIG_FILE_PATH);
-                if (!configFile.exists()) {
-                    configFile.createNewFile();
+        File persistentConfigFile = CONFIG_FILE_PATH.toFile();
+        
+        // Ensure the application directory exists before checking for the file
+        if (!persistentConfigFile.getParentFile().exists()) {
+            persistentConfigFile.getParentFile().mkdirs();
+        }
+        
+        System.out.println("Checking for persistent config file");
+
+        // --- PHASE 1: Try to read the persistent (user-edited) file ---
+        if (persistentConfigFile.exists()) {
+            try (FileReader reader = new FileReader(persistentConfigFile)) {
+                config.load(reader);
+                System.out.println("Persistent configuration loaded successfully.");
+            } catch (IOException e) {
+                // If we found it but couldn't read it (e.g., permissions issue)
+                System.err.println("Error reading existing persistent config file: " + e.getMessage());
+            }
+        } else {
+            // --- PHASE 2: If persistent file is missing, load the default template ---
+            System.out.println("Persistent file not found. Loading default template.");
+            
+            // USE CLASSLOADER for reading the resource from inside the JAR
+            try (InputStream templateStream = ConfigLoader.class.getClassLoader().getResourceAsStream(CONFIG_TEMPLATE_NAME)) {
+                
+                if (templateStream == null) {
+                    throw new FileNotFoundException("CRITICAL: Default template file " +  CONFIG_TEMPLATE_NAME + " not found inside the application!");
+                } else {
+                    config.load(templateStream);
+                    System.out.println("Default configuration loaded successfully.");
+                    
+                    // Immediately create the persistent file based on the template content
+                    saveProperties();
+                    System.out.println("New persistent config file created from deafult template.");
                 }
-            } catch (IOException createException) {
-                System.err.println("Could not create new config file: " + createException.getMessage());
+
+            } catch (IOException e) {
+                System.err.println("Error reading template or creating new file: " + e.getMessage());
             }
         }
     }
@@ -87,7 +127,7 @@ class ConfigLoader {
      * Saves the current state of the properties object to the config file.
      */
     public static void saveProperties() {
-        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH)) { // Use try-with-resources
+        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH.toFile())) { // Use try-with-resources
             config.store(writer, "Configuration settings updated by user interface");
         } catch (IOException ioException) {
             ioException.printStackTrace();
@@ -117,7 +157,7 @@ class ConfigLoader {
     
     public static void setLocalLastRunDateToNow() throws IOException {
         config.setProperty("local.auto.delete.last.run.date", LocalDate.now().toString());
-        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH)) {
+        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH.toFile())) {
             config.store(writer, "Configuration settings updated by user interface");
         }
     }
@@ -132,14 +172,14 @@ class ConfigLoader {
 
     public static void setCloudLastRunDateToNow() throws IOException {
         config.setProperty("cloud.auto.delete.last.run.date", LocalDate.now().toString());
-        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH)) {
+        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH.toFile())) {
             config.store(writer, "Configuration settings updated by user interface");
         }
     }
     
     public static void setAutoSaveDirectory(String location) {
         config.setProperty("auto.save.records.directory", location);
-        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH)) {
+        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH.toFile())) {
             config.store(writer, "Configuration settings updated by user interface");
         } catch (IOException e) {
             e.printStackTrace();
@@ -148,10 +188,61 @@ class ConfigLoader {
 
     public static void setAutoDeleteDuration(String property,String duration) {
         config.setProperty(property, duration);
-        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH)) {
+        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH.toFile())) {
             config.store(writer, "Configuration settings updated by user interface");
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+}
+
+
+
+class OptionsManager {
+
+    // --- Persistence Setup (Safe Location ) ---
+    private static final String APP_DIR_NAME = "DigiLogBook";
+    private static final String OPTIONS_FILE_NAME = "optionsData.csv";
+
+    // Absolute Path to the persistent, user-editable CSV file
+    private static final Path OPTIONS_DIR_PATH = Paths.get(System.getProperty("user.home"), "." + APP_DIR_NAME);
+    public static final Path PERSISTENT_FILE_PATH = OPTIONS_DIR_PATH.resolve(OPTIONS_FILE_NAME);
+    
+    // Name of the read-only template inside the JAR
+    private static final String OPTIONS_TEMPLATE_NAME = "optionsData.csv";
+
+    // --- Utility to Load Template and Create Persistent File ---
+    static {
+        File persistentFile = PERSISTENT_FILE_PATH.toFile();
+                
+        // If the persistent file doesn't exist, create the directory and copy the template
+        if (!persistentFile.exists()) {
+            try {
+                // 1. Create directory if necessary
+                if (!persistentFile.getParentFile().exists()) {
+                    persistentFile.getParentFile().mkdirs();
+                }
+
+
+                // 2. Load the template from the JAR
+                try (InputStream templateStream = OptionsManager.class.getClassLoader().getResourceAsStream(OPTIONS_TEMPLATE_NAME)) {
+                    
+                    if (templateStream == null) {
+                        throw new FileNotFoundException("CRITICAL: Default template file " + OPTIONS_TEMPLATE_NAME +" not found inside the application!");                
+                    }
+                    
+                    // 3. Write the template stream to the new persistent file
+                    try (FileOutputStream fos = new FileOutputStream(persistentFile)) {
+                        templateStream.transferTo(fos);
+                    }
+                    System.out.println("New persistent options file created from deafult template.");
+
+                }
+            } catch (IOException e) {
+                System.err.println("CRITICAL: Failed to initialize persistent options file.");
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(null, "Critical error setting up options file. Check logs.", "Setup Error", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
 }
