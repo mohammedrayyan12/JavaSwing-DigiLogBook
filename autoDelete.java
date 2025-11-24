@@ -110,8 +110,8 @@ class autoDelete {
             //close writer
             pw.close();
 
-            //delete the DB
-            // deleteStatement.executeQuery();
+            //delete the DB ( //UNCOMMET WHILE RUNNING )
+            // deleteStatement.executeQuery(); 
 
             conn.commit(); // Commit the changes
                 
@@ -153,8 +153,8 @@ class autoDelete {
             // Sync Databases 
             DataPlace.syncDatabases();
 
-            //delete the DB
-            // if (lastRun != null) deleteStatement.executeUpdate();
+            //delete the DB ( UNCOMMENT WHILE RUNNING )
+            // if (lastRun != null) deleteStatement.executeUpdate();  //condition for not deleting DB the first time application runs
 
             // Record it in config file
             ConfigLoader.setCloudLastRunDateToNow();
