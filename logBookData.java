@@ -10,6 +10,9 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,6 +20,7 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 class DataPlace {
     private JFrame jf;
@@ -605,6 +609,11 @@ class DataPlace {
 				gbc.fill = GridBagConstraints.HORIZONTAL; 
 				gbc.weightx = 1.0; 
 
+				boolean autoSavedState = Boolean.parseBoolean(ConfigLoader.config.getProperty("auto.save"));
+
+				JToggleButton enableAutoSave =  new JToggleButton("Enable Auto Save"); enableAutoSave.setSelected(autoSavedState);
+
+
 				// --- AutoSave Label ---
 				JLabel autoSaveLabel = new JLabel("Auto Save Directory");
 				gbc.gridx = 0;
@@ -628,6 +637,8 @@ class DataPlace {
 				//Mouse Listener to Set AutoSave Directory
 				autoSaveDir.addMouseListener(new MouseAdapter() {
 					public void mouseClicked(MouseEvent e) {
+						if (!autoSaveDir.isEnabled()) return;
+
 						System.out.println("Text Area Clicked");
 
 						JFileChooser fileChooser = new JFileChooser();
@@ -642,13 +653,49 @@ class DataPlace {
 
 						if (result == JFileChooser.APPROVE_OPTION) {
 							File selectedDirectory = fileChooser.getSelectedFile();
-							
 							String absolutePath = selectedDirectory.getAbsolutePath();
+							
+							String oldPathString = ConfigLoader.config.getProperty("auto.save.records.directory");
+
+							Path oldPath = Paths.get(oldPathString);
+							Path newPathDir = Paths.get(absolutePath);
+
+							if (! (oldPath.equals(newPathDir) || !Files.isDirectory(oldPath)) ) {
+								try {
+									// Iterate through all files in the old directory
+									try (Stream<Path> files = Files.list(oldPath)) {
+										files.forEach(source -> {
+
+											// Construct the destination path
+											Path destination = newPathDir.resolve(source.getFileName());
+
+											try {
+												// Move the file. ATOMIC_MOVE ensures the file is moved in one operation, 
+												// and REPLACE_EXISTING prevents errors if a file with the same name exists.
+												Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+
+											} catch (IOException ee) {
+												// Handle failure for individual file move (e.g., permission denied)
+												System.err.println("Failed to move file " + source.getFileName() + ": " + ee.getMessage());
+
+											}
+										});
+									}
+									//delete the previous directory
+									Files.delete(oldPath); 
+									System.out.println("Previous autoSave directory");
+
+								} catch (IOException ee) {
+									// Handle critical errors like inability to create the new directory or list files
+									System.err.println("Critical error during directory transfer: " + ee.getMessage());
+								}
+							}
+
 							ConfigLoader.setAutoSaveDirectory(absolutePath);
 							autoSaveDir.setText(absolutePath);
 
 							JOptionPane.showMessageDialog(jf, 
-								"AutoSave directory set to: \n" + absolutePath, 
+								"AutoSave directory set to: \n" + absolutePath + "\n(Exported and deleted deleted file in: " + oldPathString + " )", 
 								"Location Selected", 
 								JOptionPane.INFORMATION_MESSAGE);	
 						} else if (result == JFileChooser.CANCEL_OPTION) {
@@ -680,6 +727,73 @@ class DataPlace {
 
 
 				gbc.gridy = 4; mainPanel.add(timeDuration,gbc);
+
+				gbc.gridy = 5; mainPanel.add(enableAutoSave,gbc);
+				enableAutoSave.addActionListener(ee -> {
+					boolean enabled = enableAutoSave.isSelected();
+					String text =  (enabled) ?  "Disable Auto Save" : "Enable Auto Save";
+					enableAutoSave.setText(text);
+					timeDurationCloud.setEnabled(enabled);
+					timeDurationLocal.setEnabled(enabled);
+					cleanUpC.setVisible(enabled);
+					cleanUpL.setVisible(enabled);
+        			autoSaveDir.setEnabled(enabled);
+
+					//save updated property
+					ConfigLoader.setAutoSaveFeature("auto.save", String.valueOf(enabled));
+					if (enabled) {
+						String AUTOSAVE_DIR_PATH = ConfigLoader.config.getProperty("auto.save.records.directory");
+						if (AUTOSAVE_DIR_PATH.equals("autoSaved_Session_Records"))
+							AUTOSAVE_DIR_PATH = Paths.get(System.getProperty("user.home"), "autoSaved_Session_Records").toString();
+						if (!Paths.get(AUTOSAVE_DIR_PATH).toFile().getAbsoluteFile().exists()) {
+							Paths.get(AUTOSAVE_DIR_PATH).toFile().getAbsoluteFile().mkdirs();
+						}
+						ConfigLoader.setAutoSaveDirectory(AUTOSAVE_DIR_PATH);
+					} else {
+						String AUTOSAVE_DIR_PATH = ConfigLoader.config.getProperty("auto.save.records.directory");
+						if (AUTOSAVE_DIR_PATH.equals("autoSaved_Session_Records"))
+							AUTOSAVE_DIR_PATH = Paths.get(System.getProperty("user.home"), "autoSaved_Session_Records").toString();
+						if (Paths.get(AUTOSAVE_DIR_PATH).toFile().getAbsoluteFile().exists()) {
+							Paths.get(AUTOSAVE_DIR_PATH).toFile().getAbsoluteFile().delete();
+						}
+					}
+					autoSaveDir.setText(!enabled ? "(Auto Save Disabled)" : ConfigLoader.config.getProperty("auto.save.records.directory")); 
+
+					settingsDialog.pack();
+
+				});
+				
+				boolean enabled = enableAutoSave.isSelected();
+				
+				if (enabled) {
+					String AUTOSAVE_DIR_PATH = ConfigLoader.config.getProperty("auto.save.records.directory");
+					if (AUTOSAVE_DIR_PATH.equals("autoSaved_Session_Records"))
+						AUTOSAVE_DIR_PATH = Paths.get(System.getProperty("user.home"), "autoSaved_Session_Records").toString();
+					if (!Paths.get(AUTOSAVE_DIR_PATH).toFile().getParentFile().exists()) {
+						Paths.get(AUTOSAVE_DIR_PATH).toFile().getParentFile().mkdirs();
+					}
+					ConfigLoader.setAutoSaveDirectory(AUTOSAVE_DIR_PATH);
+				} else {
+					String AUTOSAVE_DIR_PATH = ConfigLoader.config.getProperty("auto.save.records.directory");
+					if (AUTOSAVE_DIR_PATH.equals("autoSaved_Session_Records"))
+						AUTOSAVE_DIR_PATH = Paths.get(System.getProperty("user.home"), "autoSaved_Session_Records").toString();
+					if (Paths.get(AUTOSAVE_DIR_PATH).toFile().getAbsoluteFile().exists()) {
+						Paths.get(AUTOSAVE_DIR_PATH).toFile().getAbsoluteFile().delete();
+					}
+				}
+
+				String text = (enabled) ? "Disable Auto Save" : "Enable Auto Save";
+				enableAutoSave.setText(text);
+				
+				// Explicitly set the state of dependent components
+				timeDurationCloud.setEnabled(enabled);
+				timeDurationLocal.setEnabled(enabled);
+				cleanUpC.setVisible(enabled);
+				cleanUpL.setVisible(enabled);
+				
+				// Update the directory field
+				autoSaveDir.setText(!enabled ? "(Auto Save Disabled)" : ConfigLoader.config.getProperty("auto.save.records.directory")); 
+				autoSaveDir.setEnabled(enabled);
 
 				// Calculate index to set 
 				timeDurationLocal.setSelectedIndex(Integer.parseInt(ConfigLoader.config.getProperty("local.auto.delete.duration")) / 3);

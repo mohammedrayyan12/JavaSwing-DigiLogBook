@@ -157,7 +157,7 @@ class ConfigLoader {
 
     public static String getLocalDBUrl() {
         final String DB_FILE_NAME = config.getProperty("JDBC_URL_local");
-        
+
         return "jdbc:sqlite:" + CONFIG_DIR_PATH.resolve(DB_FILE_NAME).toString();
     }
     
@@ -200,6 +200,16 @@ class ConfigLoader {
             e.printStackTrace();
         }
     }
+
+    public static void setAutoSaveFeature(String property, String isSelected) {
+        config.setProperty(property, isSelected);
+        try (FileWriter writer = new FileWriter(CONFIG_FILE_PATH.toFile())) {
+            config.store(writer, "Configuration settings updated by user interface");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
 }
 
 

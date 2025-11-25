@@ -176,13 +176,17 @@ class autoDelete {
             // Because this runs on a background thread, we must use SwingUtilities.invokeLater
             // to interact with UI components like JDialog or JOptionPane
             SwingUtilities.invokeLater(() -> {
-                System.out.println("Scheduled auto-delete running...");
+                if (Boolean.parseBoolean(ConfigLoader.config.getProperty("auto.save"))) {
+                    System.out.println("Scheduled auto-delete running...");
 
-                //Cloud Cleaning
-                performCloudAutoDeleteAndSync(null);
+                    //Cloud Cleaning
+                    performCloudAutoDeleteAndSync(null);
 
-                //Local Cleaning
-                performLocalAutoDeleteAndExport(null); 
+                    //Local Cleaning
+                    performLocalAutoDeleteAndExport(null); 
+                } else {
+                    System.out.println("auto-delete is disabled");
+                }
             });
         };
 
