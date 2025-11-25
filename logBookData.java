@@ -10,7 +10,6 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,7 +34,7 @@ class DataPlace {
     private String editing = "nah";
 
     private static String JDBC_URL_cloud = ConfigLoader.config.getProperty("JDBC_URL_cloud");
-    private final static String JDBC_URL_local = ConfigLoader.config.getProperty("JDBC_URL_local"); // for now sqlite
+    private final static String JDBC_URL_local = ConfigLoader.getLocalDBUrl(); 
 	private static String USERNAME_cloud = ConfigLoader.config.getProperty("JDBC_USERNAME_cloud");
 	private static String PASSWORD_cloud = ConfigLoader.config.getProperty("JDBC_PASSWORD_cloud");
 

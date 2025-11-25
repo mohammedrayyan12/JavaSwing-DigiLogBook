@@ -74,7 +74,7 @@ class ConfigLoader {
     private static final String APP_DIR_NAME = "DigiLogBook";
     private static final String CONFIG_FILE_NAME = "config.properties";
 
-    private static final Path CONFIG_DIR_PATH = Paths.get(System.getProperty("user.home"), "." + APP_DIR_NAME);
+    protected static final Path CONFIG_DIR_PATH = Paths.get(System.getProperty("user.home"), "." + APP_DIR_NAME);
     private static final Path CONFIG_FILE_PATH = CONFIG_DIR_PATH.resolve(CONFIG_FILE_NAME);
     
     // The internal name of the template file inside the JAR
@@ -154,6 +154,12 @@ class ConfigLoader {
         }
         return LocalDate.parse(dateStr);
     }
+
+    public static String getLocalDBUrl() {
+        final String DB_FILE_NAME = config.getProperty("JDBC_URL_local");
+        
+        return "jdbc:sqlite:" + CONFIG_DIR_PATH.resolve(DB_FILE_NAME).toString();
+    }
     
     public static void setLocalLastRunDateToNow() throws IOException {
         config.setProperty("local.auto.delete.last.run.date", LocalDate.now().toString());
@@ -201,12 +207,10 @@ class ConfigLoader {
 class OptionsManager {
 
     // --- Persistence Setup (Safe Location ) ---
-    private static final String APP_DIR_NAME = "DigiLogBook";
     private static final String OPTIONS_FILE_NAME = "optionsData.csv";
 
     // Absolute Path to the persistent, user-editable CSV file
-    private static final Path OPTIONS_DIR_PATH = Paths.get(System.getProperty("user.home"), "." + APP_DIR_NAME);
-    public static final Path PERSISTENT_FILE_PATH = OPTIONS_DIR_PATH.resolve(OPTIONS_FILE_NAME);
+    public static final Path PERSISTENT_FILE_PATH = ConfigLoader.CONFIG_DIR_PATH.resolve(OPTIONS_FILE_NAME);
     
     // Name of the read-only template inside the JAR
     private static final String OPTIONS_TEMPLATE_NAME = "optionsData.csv";

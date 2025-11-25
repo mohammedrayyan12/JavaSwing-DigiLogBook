@@ -2,6 +2,7 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Paths;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -38,17 +39,20 @@ class autoDelete {
         String fileName = "Session_Records_" + now.format(formatter) + ".csv";
     
         // target file 
-        File saveFile = new File(ConfigLoader.config.getProperty("auto.save.records.directory"), fileName);
+        String AUTOSAVE_DIR_PATH = ConfigLoader.config.getProperty("auto.save.records.directory");
+        if (AUTOSAVE_DIR_PATH.equals("autoSaved_Session_Records"))
+            AUTOSAVE_DIR_PATH = Paths.get(System.getProperty("user.home"), "autoSaved_Session_Records").toString();
 
-    
+        File saveFile = new File(AUTOSAVE_DIR_PATH, fileName);
+
         try (
-            Connection conn = DriverManager.getConnection(ConfigLoader.config.getProperty("JDBC_URL_local"));
+            Connection conn = DriverManager.getConnection(ConfigLoader.getLocalDBUrl());
             PreparedStatement preparedStatement = conn.prepareStatement(showQuery);
             PreparedStatement deleteStatement = conn.prepareStatement(deleteQuery);
             )  {
             
             // Disable auto-commit for transaction safety
-            conn.setAutoCommit(false); 
+            conn.setAutoCommit(false);
             ResultSet resultSet = preparedStatement.executeQuery();
 
             List<SessionRecord> records = new ArrayList<>();
