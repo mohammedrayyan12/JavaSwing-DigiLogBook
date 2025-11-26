@@ -47,33 +47,58 @@ class autoDelete {
 
         try (
             Connection conn = DriverManager.getConnection(ConfigLoader.getLocalDBUrl());
-            PreparedStatement preparedStatement = conn.prepareStatement(showQuery);
-            PreparedStatement deleteStatement = conn.prepareStatement(deleteQuery);
             )  {
+
+            // Setup local database table if it doesn't exist
+			try (Statement stmt = conn.createStatement()) {
+				stmt.executeUpdate("CREATE TABLE IF NOT EXISTS " +  ConfigLoader.config.getProperty("LOCAL_TABLE") + " (" +
+						"session_id TEXT PRIMARY KEY, " +
+						"login_time TEXT, " +
+						"logout_time TEXT, " +
+						"usn TEXT, " +
+						"name TEXT, " +
+						"sem TEXT, " +
+						"dept TEXT, " +
+						"sub TEXT, " +
+						"batch TEXT" +
+						");");
+			}
+
             
             // Disable auto-commit for transaction safety
             conn.setAutoCommit(false);
-            ResultSet resultSet = preparedStatement.executeQuery();
 
             List<SessionRecord> records = new ArrayList<>();
 
+            try (
+                PreparedStatement preparedStatement = conn.prepareStatement(showQuery); 
+                PreparedStatement deleteStatement = conn.prepareStatement(deleteQuery); 
+            ) {
 
-            while (resultSet.next()) {
-                records.add(new SessionRecord(
-                        resultSet.getString("login_time"),
-                        resultSet.getString("logout_time"),
-                        resultSet.getString("usn"),
-                        resultSet.getString("name"),
-                        resultSet.getString("sem"),
-                        resultSet.getString("dept"),
-                        resultSet.getString("sub"),
-                        resultSet.getString("batch"),
-                        resultSet.getString("session_id")
+                ResultSet resultSet = preparedStatement.executeQuery();
 
-                ));
+                while (resultSet.next()) {
+                    records.add(new SessionRecord(
+                            resultSet.getString("login_time"),
+                            resultSet.getString("logout_time"),
+                            resultSet.getString("usn"),
+                            resultSet.getString("name"),
+                            resultSet.getString("sem"),
+                            resultSet.getString("dept"),
+                            resultSet.getString("sub"),
+                            resultSet.getString("batch"),
+                            resultSet.getString("session_id")
+
+                    ));
+                }
+                
             }
-            
-        
+            if (records.isEmpty()) {
+                ConfigLoader.setLocalLastRunDateToNow(); 
+                System.out.println("Local DB auto-delete and export complete.");
+                return;
+            }
+
             // Define headers. Assuming the same columns as your JTable
             String[] headers = new String[] { "Login Time", "USN", "Name", "Sem", "Dept", "Subject", "Batch",
                     "Logout Time", "Session ID" };
