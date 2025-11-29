@@ -523,13 +523,14 @@ class DataPlace {
 						}
 						settingsDialog.pack();
 					});
-					gbcs.gridx= 0; gbcs.gridy=0; sensitivePanel.add(cloudDatabaseLinkLabel,gbcs);
-					gbcs.gridx= 0; gbcs.gridy=1; sensitivePanel.add(cloudDatabaseLinkField,gbcs);
-					gbcs.gridx=1; sensitivePanel.add(editButton,gbcs);
-					gbcs.gridx= 0; gbcs.gridy=2; sensitivePanel.add(cloudDatabaseUserLabel,gbcs);
-					gbcs.gridy=3; sensitivePanel.add(cloudDatabaseUserField,gbcs);
-					gbcs.gridy = 4; sensitivePanel.add(cloudDatabasePsswdLabel,gbcs);
-					gbcs.gridy = 5; sensitivePanel.add(cloudDatabasePsswdField,gbcs);
+					int iX = 0, iY=0;
+					gbcs.gridx = iX; gbcs.gridy=iY++; sensitivePanel.add(cloudDatabaseLinkLabel,gbcs);
+					gbcs.gridx = iX; gbcs.gridy=iY++; sensitivePanel.add(cloudDatabaseLinkField,gbcs);
+					gbcs.gridx = ++iX; sensitivePanel.add(editButton,gbcs);
+					gbcs.gridx = --iX; gbcs.gridy=iY++; sensitivePanel.add(cloudDatabaseUserLabel,gbcs);
+					gbcs.gridy = iY++; sensitivePanel.add(cloudDatabaseUserField,gbcs);
+					gbcs.gridy = iY++; sensitivePanel.add(cloudDatabasePsswdLabel,gbcs);
+					gbcs.gridy = iY++; sensitivePanel.add(cloudDatabasePsswdField,gbcs);
 
 
 				} else {
@@ -607,7 +608,16 @@ class DataPlace {
 				GridBagConstraints gbc = new GridBagConstraints();
 				gbc.insets = new Insets(5, 10, 5, 10); 
 				gbc.fill = GridBagConstraints.HORIZONTAL; 
+				int iX = 0, iY = 0; // for gbc 
 				gbc.weightx = 1.0; 
+
+				if (Boolean.parseBoolean(ConfigLoader.config.getProperty("testing.skip.delete", "false"))) {
+					JLabel warningLabel = new JLabel("⚠️ Testing Mode: Deletions are disabled");
+					warningLabel.setForeground(Color.RED);
+					warningLabel.setFont(new Font("Arial", Font.BOLD, 12));
+					gbc.gridy = iY++;
+					mainPanel.add(warningLabel, gbc);
+				}
 
 				boolean autoSavedState = Boolean.parseBoolean(ConfigLoader.config.getProperty("auto.save"));
 
@@ -616,8 +626,8 @@ class DataPlace {
 
 				// --- AutoSave Label ---
 				JLabel autoSaveLabel = new JLabel("Auto Save Directory");
-				gbc.gridx = 0;
-				gbc.gridy = 0;
+				gbc.gridx = iX;
+				gbc.gridy = iY++;
 				gbc.weighty = 0.0; 
 				mainPanel.add(autoSaveLabel, gbc);
 
@@ -630,7 +640,7 @@ class DataPlace {
 
 				JScrollPane scrollPane = new JScrollPane(autoSaveDir);
 				gbc.gridx = 0;
-				gbc.gridy = 1;
+				gbc.gridy = iY++;
 				gbc.weighty = 1.0; 
 				mainPanel.add(scrollPane, gbc);
  
@@ -709,10 +719,10 @@ class DataPlace {
 
 				// --- Recent Cleanup ---
 				JLabel cleanUpL = new JLabel("Recent Cleanup (Local DB): " + ConfigLoader.config.getProperty("local.auto.delete.last.run.date"));  
-				gbc.gridy = 2; mainPanel.add(cleanUpL,gbc);
+				gbc.gridy = iY++; mainPanel.add(cleanUpL,gbc);
 
 				JLabel cleanUpC = new JLabel("Recent Cleanup (Cloud DB): " + ConfigLoader.config.getProperty("cloud.auto.delete.last.run.date"));  
-				gbc.gridy = 3; mainPanel.add(cleanUpC,gbc);
+				gbc.gridy = iY++; mainPanel.add(cleanUpC,gbc);
 
 				// --- Time Duration to delete (Local) ---
 				JPanel timeDuration = new JPanel(new GridLayout(2, 2));
@@ -726,9 +736,9 @@ class DataPlace {
 				JComboBox timeDurationCloud = new JComboBox<>(new String[] {"1 Week", "2 Weeks", "3 Weeks", "4 Weeks"}); timeDuration.add(timeDurationCloud);
 
 
-				gbc.gridy = 4; mainPanel.add(timeDuration,gbc);
+				gbc.gridy = iY++; mainPanel.add(timeDuration,gbc);
 
-				gbc.gridy = 5; mainPanel.add(enableAutoSave,gbc);
+				gbc.gridy = iY++; mainPanel.add(enableAutoSave,gbc);
 				enableAutoSave.addActionListener(ee -> {
 					boolean enabled = enableAutoSave.isSelected();
 					String text =  (enabled) ?  "Disable Auto Save" : "Enable Auto Save";

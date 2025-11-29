@@ -70,9 +70,9 @@ class autoDelete {
 
             List<SessionRecord> records = new ArrayList<>();
 
+            // --- EXPORT TO CSV
             try (
                 PreparedStatement preparedStatement = conn.prepareStatement(showQuery); 
-                PreparedStatement deleteStatement = conn.prepareStatement(deleteQuery); 
             ) {
 
                 ResultSet resultSet = preparedStatement.executeQuery();
@@ -138,9 +138,25 @@ class autoDelete {
 
             //close writer
             pw.close();
+            // ----
 
-            //delete the DB ( //UNCOMMET WHILE RUNNING )
-            // deleteStatement.executeQuery(); 
+            // --- DELETION --
+            try (PreparedStatement deleteStatement = conn.prepareStatement(deleteQuery); ) {
+
+                boolean skipDelete = Boolean.parseBoolean(
+                    ConfigLoader.config.getProperty("testing.skip.delete", "false")
+                );
+                
+                if (skipDelete) {
+                    System.out.println("⚠️ TESTING MODE: Skipping delete operation");
+                    System.out.println("   (Set testing.skip.delete=false to enable deletion)");
+                } else {
+                    int deletedRows = deleteStatement.executeUpdate();
+                    System.out.println("✓ Deleted " + deletedRows + " records from LOCAL DB");
+                }
+
+            }
+            // ---
 
             conn.commit(); // Commit the changes
                 
@@ -182,6 +198,19 @@ class autoDelete {
             // Sync Databases 
             DataPlace.syncDatabases();
 
+            boolean skipDelete = Boolean.parseBoolean(
+                ConfigLoader.config.getProperty("testing.skip.delete", "false")
+            );
+            
+            if (skipDelete) {
+                System.out.println("⚠️ TESTING MODE: Skipping cloud delete operation");
+                System.out.println("   (Set testing.skip.delete=false to enable deletion)");
+            } else {
+                if (lastRun != null) { // Don't delete on first run
+                    int deletedRows = deleteStatement.executeUpdate();
+                    System.out.println("✓ Deleted " + deletedRows + " records from CLOUD DB");
+                }
+            }
             //delete the DB ( UNCOMMENT WHILE RUNNING )
             // if (lastRun != null) deleteStatement.executeUpdate();  //condition for not deleting DB the first time application runs
 
