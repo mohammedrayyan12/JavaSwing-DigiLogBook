@@ -16,6 +16,16 @@
 
 ---
 
+### 🔗 Project Structure
+DigiLogBook is a distributed system consisting of two main components:
+
+* **Server - DigiLogBook (This Repo):** Developed by ([@mohammedrayyan12](https://github.com/mohammedrayyan12)). It manages the **Supabase** cloud integration, data persistence, and fail-safe synchronization logic.
+* **Client - Session Tracker:** Developed by ([@CodingMirage](https://github.com/CodingMirage)). It provides the desktop user interface for student attendance and local log entry.
+
+**Client Repository:** [Session-Tracker-Client](https://github.com/CodingMirage/JavaSwing-SessionTracker)
+
+---
+
 ## 🎯 Overview
 
 **DigiLogBook** is a comprehensive Java Swing desktop application designed for educational institutions to manage student lab session records efficiently. It provides an intuitive interface for importing, viewing, filtering, and exporting lab attendance data with automatic cloud backup capabilities.
