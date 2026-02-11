@@ -2,6 +2,8 @@
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -10,6 +12,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
@@ -19,9 +22,13 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Comparator;
 import java.util.GregorianCalendar;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.List;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 
 import javax.swing.*;
 
@@ -32,6 +39,139 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+
+
+class HelperFunctions {
+    
+    public static void showEditDialog(String category, JPanel parent) {
+		Window parentWindow = SwingUtilities.getWindowAncestor(parent);
+		JDialog dialog = new JDialog(parentWindow, "Edit " + category, Dialog.ModalityType.APPLICATION_MODAL);
+		dialog.setLayout(new BorderLayout());
+
+		// 1. Load initial data into a local list
+		List<String> localItems = OptionsManager.getCategoryItems(category);
+		final boolean[] isChanged = {false}; // variables accessed inside lambdas or inner classes must be effectively final, hence create an array and change
+
+		// 2. Search Bar (Top)
+		JTextField searchField = new JTextField();
+		searchField.setBorder(BorderFactory.createTitledBorder("Search " + category));
+		
+		// 3. Main List Panel (Center)
+		JPanel listPanel = new JPanel();
+		listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+		listPanel.setBackground(Color.WHITE);
+
+		// 4. Document Listener for real-time filtering
+		searchField.getDocument().addDocumentListener(new DocumentListener() {
+			public void insertUpdate(DocumentEvent e) { updateListUI(listPanel, localItems, searchField.getText(), isChanged); }
+			public void removeUpdate(DocumentEvent e) { updateListUI(listPanel, localItems, searchField.getText(), isChanged); }
+			public void changedUpdate(DocumentEvent e) { updateListUI(listPanel, localItems, searchField.getText(), isChanged); }
+		});
+
+		// 5. Scrollable Area
+		JScrollPane scrollPane = new JScrollPane(listPanel);
+		scrollPane.getViewport().setBackground(Color.WHITE);
+		scrollPane.setBorder(BorderFactory.createEmptyBorder());
+
+		// 6. Footer (Input + Save Button)
+		JPanel footer = new JPanel(new BorderLayout(5, 5));
+		footer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+		
+		JTextField inputField = new JTextField();
+		JButton addBtn = new JButton("+ Add");
+		JButton saveBtn = new JButton("Save & Close");
+		saveBtn.setBackground(new Color(40, 167, 69)); // Green
+		saveBtn.setForeground(Color.WHITE);
+		saveBtn.setOpaque(true);
+		saveBtn.setBorderPainted(false);
+
+		addBtn.addActionListener(e -> {
+			String val = inputField.getText().trim();
+			if (!val.isEmpty()) {
+				localItems.add(val);
+				isChanged[0] = true;
+				inputField.setText("");
+				updateListUI(listPanel, localItems, searchField.getText(),isChanged);
+			}
+		});
+
+		saveBtn.addActionListener(e -> {
+			OptionsManager.saveCategoryItems(category, localItems);
+			isChanged[0] = false;
+			dialog.dispose();
+		});
+
+		JPanel inputRow = new JPanel(new BorderLayout(5, 0));
+		inputRow.add(inputField, BorderLayout.CENTER);
+		inputRow.add(addBtn, BorderLayout.EAST);
+
+		footer.add(inputRow, BorderLayout.NORTH);
+		footer.add(saveBtn, BorderLayout.SOUTH);
+
+		// 7. Safety Net: Window Listener
+		dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+		dialog.addWindowListener(new WindowAdapter() {
+			@Override
+			public void windowClosing(WindowEvent e) {
+				if (isChanged[0]) {
+					int choice = JOptionPane.showConfirmDialog(dialog, 
+						"You have unsaved changes. Save before closing?", "Unsaved Changes", 
+						JOptionPane.YES_NO_CANCEL_OPTION);
+					
+					if (choice == JOptionPane.YES_OPTION) {
+						OptionsManager.saveCategoryItems(category, localItems);
+						dialog.dispose();
+					} else if (choice == JOptionPane.NO_OPTION) {
+						dialog.dispose();
+					}
+				} else dialog.dispose();
+			}
+		});
+
+		// Final Assembly
+		dialog.add(searchField, BorderLayout.NORTH);
+		dialog.add(scrollPane, BorderLayout.CENTER);
+		dialog.add(footer, BorderLayout.SOUTH);
+		
+		updateListUI(listPanel, localItems, "", isChanged); // Initial render
+		
+		dialog.setSize(350, 500);
+		dialog.setLocationRelativeTo(parent);
+		dialog.setVisible(true);
+	}
+
+	public static void updateListUI(JPanel listPanel, List<String> localItems, String filter, boolean[] isChanged) {
+		listPanel.removeAll();
+		String lowerFilter = filter.toLowerCase();
+
+		for (String item : localItems) {
+			if (!filter.isEmpty() && !item.toLowerCase().contains(lowerFilter)) continue;
+
+			JPanel row = new JPanel(new BorderLayout());
+			row.setBackground(Color.WHITE);
+			row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+			row.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
+
+			JLabel label = new JLabel("  " + item);
+			JButton removeBtn = new JButton("-");
+			removeBtn.setForeground(Color.RED);
+			removeBtn.setBorderPainted(false);
+			removeBtn.setContentAreaFilled(false);
+
+			removeBtn.addActionListener(e -> {
+				localItems.remove(item);
+				isChanged[0] = true;  // Mark as changed
+				updateListUI(listPanel, localItems, filter, isChanged);
+			});
+
+			row.add(label, BorderLayout.CENTER);
+			row.add(removeBtn, BorderLayout.EAST);
+			listPanel.add(row);
+		}
+		listPanel.revalidate();
+		listPanel.repaint();
+	}
+}
 
 class CloudDataBaseInfo {
 
@@ -81,10 +221,12 @@ class ConfigLoader {
     private static final String CONFIG_TEMPLATE_NAME = "config.properties";
 
     static {
+        Path k = OptionsManager.PERSISTENT_FILE_PATH; // Called solely to add csv to configuration folder 
         File persistentConfigFile = CONFIG_FILE_PATH.toFile();
         
         // Ensure the application directory exists before checking for the file
         if (!persistentConfigFile.getParentFile().exists()) {
+            System.out.println("Created Application Folder at " + CONFIG_DIR_PATH);
             persistentConfigFile.getParentFile().mkdirs();
         }
         
@@ -120,6 +262,26 @@ class ConfigLoader {
             } catch (IOException e) {
                 System.err.println("Error reading template or creating new file: " + e.getMessage());
             }
+        }
+    }
+
+    /*
+    Delete Application Folder created.
+     */
+    public static void deleteConfigFolder(Path path) {
+        if (!Files.exists(path)) {
+            System.out.println("No configuration folder found at: " + path);
+            return;
+        }
+        try {
+            Files.walk(path)
+                .sorted(Comparator.reverseOrder()) // Delete children before parents
+                .map(Path::toFile)
+                .forEach(File::delete);
+            System.out.println("\u26A0 CRITICAL: Deleted Application Configuration Folder");
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.out.println("Failed to delete Application Configuration Folder");
         }
     }
 
@@ -212,8 +374,6 @@ class ConfigLoader {
 
 }
 
-
-
 class OptionsManager {
 
     // --- Persistence Setup (Safe Location ) ---
@@ -258,6 +418,45 @@ class OptionsManager {
                 JOptionPane.showMessageDialog(null, "Critical error setting up options file. Check logs.", "Setup Error", JOptionPane.ERROR_MESSAGE);
             }
         }
+    }
+
+    /*
+   Update OptionsData
+    */
+    public static List<String> getCategoryItems(String category) {
+        Path path = Paths.get(System.getProperty("user.home"), ".DigiLogBook", "optionsData.csv");
+        try {
+            List<String> lines = Files.readAllLines(path);
+            for (String line : lines) {
+                if (line.startsWith(category)) {
+                    String[] parts = line.split(",");
+                    List<String> items = new ArrayList<>();
+                    for (int i = 1; i < parts.length-1; i++) { // skip first element -> category and last element -> OTHERS
+                        String item = parts[i].trim();
+                        if (!item.isEmpty()) {
+                            items.add(item);
+                        }
+                    }
+                    return items;
+                }
+            }
+        } catch (IOException e) { e.printStackTrace(); }
+        return new ArrayList<>();
+    }
+
+    public static void saveCategoryItems(String category, List<String> items) {
+        Path path = Paths.get(System.getProperty("user.home"), ".DigiLogBook", "optionsData.csv");
+        try {
+            List<String> lines = Files.readAllLines(path);
+            for (int i = 0; i < lines.size(); i++) {
+                if (lines.get(i).startsWith(category)) {
+                    String newLine = category + "," + String.join(",", items) + ",OTHERS...";
+                    lines.set(i, newLine);
+                    break;
+                }
+            }
+            Files.write(path, lines);
+        } catch (IOException e) { e.printStackTrace(); }
     }
 }
 
