@@ -1,4 +1,6 @@
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 import java.awt.*;
@@ -23,6 +25,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 class DataPlace {
+	boolean isTestingPhase = Boolean.parseBoolean(ConfigLoader.config.getProperty("testing.phase","false"));
     private JFrame jf;
     private JPanel view;
     private JPanel mainContent;
@@ -438,7 +441,7 @@ class DataPlace {
         settingsPanel.setOpaque(false);
         
         // Settings Button ⚙️
-        JButton settingsButton = new JButton("⚙️"); 
+        JButton settingsButton = new JButton("\u2699"); 
         settingsButton.setFont(new Font("Arial", Font.PLAIN, 18));
         settingsButton.setForeground(Color.WHITE);
         settingsButton.setBackground(new Color(44, 44, 46)); // Dark background
@@ -832,11 +835,78 @@ class DataPlace {
 				return mainPanel;
 			};
 
+			Callable<JPanel> ConfigurationFolder = () -> {
+				JPanel mainPanel = new JPanel();
+				mainPanel.setLayout(new GridBagLayout());
+				GridBagConstraints gbc = new GridBagConstraints();
+				gbc.insets = new Insets(5, 10, 5, 10);
+				gbc.fill = GridBagConstraints.HORIZONTAL;
+				gbc.gridx = 0;
+				gbc.gridy = 0;
+
+
+				// --- SECTION: Edit Options ---
+				JLabel label = new JLabel("\u2699 Edit Application References");
+				label.setFont(new Font("SansSerif", Font.BOLD, 14));
+				mainPanel.add(label, gbc);
+
+				String[] categories = {"Subjects", "Departments", "Batches", "Semester"};
+				
+				for (String cat : categories) {
+					gbc.gridy++;
+					JButton btn = new JButton("Manage " + cat);
+					btn.addActionListener(ee -> HelperFunctions.showEditDialog(cat, mainPanel));
+					mainPanel.add(btn, gbc);
+				}
+
+				// --- SECTION: Danger Zone ---
+				gbc.gridy++;
+    			gbc.insets = new Insets(30, 10, 10, 10);
+				JButton deleteConfigurations = new JButton("\uD83D\uDDD1 Delete Configuration");
+				deleteConfigurations.setBackground(new Color(220, 53, 69)); 
+				deleteConfigurations.setForeground(Color.WHITE); 
+				deleteConfigurations.setFocusPainted(false);
+				deleteConfigurations.setFont(new Font("SansSerif", Font.BOLD, 12));
+
+				// Makes the background color visible on MacOS and some Windows themes
+				deleteConfigurations.setContentAreaFilled(true);
+				deleteConfigurations.setOpaque(true);
+				deleteConfigurations.setBorderPainted(false);
+				mainPanel.add(deleteConfigurations, gbc);
+
+				deleteConfigurations.addActionListener(ee -> {
+					String message = "Are you sure you want to delete all configurations?\n" +
+                         "This action is permanent and will terminate the application.";
+					String heading = "Confirm Critical Deletion";
+
+					int response = JOptionPane.showConfirmDialog(
+						mainPanel, 
+						message, 
+						heading, 
+						JOptionPane.YES_NO_OPTION, 
+						JOptionPane.WARNING_MESSAGE
+					);
+
+					if (response == JOptionPane.YES_OPTION) {
+						Path CONFIG_DIR_PATH = Paths.get(System.getProperty("user.home"), ".DigiLogBook");
+						ConfigLoader.deleteConfigFolder(CONFIG_DIR_PATH);
+						
+						// Terminate the app
+						System.out.println("Terminating Application...");
+						System.exit(0);
+					}
+				});
+
+
+				return mainPanel;
+
+			};
 			JTabbedPane ooptions = new JTabbedPane();
 
 			try {
 				ooptions.addTab("Cloud Database", CloudDBConfig.call());
 				ooptions.addTab("Auto Save/Delete", AutoDeleteConfig.call());
+				ooptions.addTab("Configuration Details", ConfigurationFolder.call());
 			} catch (Exception e1) {
 				System.err.println("ERROR: While Adding Tabs to Settings Dialog");
 				e1.printStackTrace();
@@ -909,9 +979,9 @@ class DataPlace {
                 ConfigLoader.config.getProperty("CLOUD_DB_VERIFIED", "false")
             );
 
-            if (isVerified) {
+            if (isVerified || isTestingPhase) {
                 showAddViewLogBookPanel(); 
-            } else {
+			} else {
                 Object[] options = {"Verify","Maybe Later"};
                 int choice = JOptionPane.showOptionDialog(
                     null, 
@@ -932,20 +1002,22 @@ class DataPlace {
    
     }
 
-    boolean importFromUserSelection() {
-        JFileChooser fileChooser = new JFileChooser();
+
+
+	boolean importFromUserSelection() {
+		JFileChooser fileChooser = new JFileChooser();
 		fileChooser.setDialogTitle("Select CSV files to import");
 		
-        //filter to show only folders/CSV files in current directory
-        FileNameExtensionFilter filter = new FileNameExtensionFilter("CSV Files", "csv"); 
+		//filter to show only folders/CSV files in current directory
+		FileNameExtensionFilter filter = new FileNameExtensionFilter("CSV Files", "csv"); 
 		fileChooser.setFileFilter(filter);
 		fileChooser.setMultiSelectionEnabled(true);
 
 		int userSelection = fileChooser.showOpenDialog(null); 
-        if (userSelection == JFileChooser.APPROVE_OPTION) {
+		if (userSelection == JFileChooser.APPROVE_OPTION) {
 
 			File[] selectedFiles = fileChooser.getSelectedFiles();
-            
+			
 			try {
 				logBookData.manager = new AddLogbookManager();
 				for (File file: selectedFiles) {
@@ -962,10 +1034,10 @@ class DataPlace {
 				e.printStackTrace();
 			}
 
-        }
-        return false;
+		}
+		return false;
 
-    }
+	}
 
     void showAddViewLogBookPanel() {
 		mainContent = new JPanel(new BorderLayout(12, 12));
