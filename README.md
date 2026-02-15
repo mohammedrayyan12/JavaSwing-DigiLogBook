@@ -19,7 +19,7 @@
 ### 🔗 Project Structure
 DigiLogBook is a distributed system consisting of two main components:
 
-* **Server - DigiLogBook (This Repo):** Developed by ([@mohammedrayyan12](https://github.com/mohammedrayyan12)). It manages the **Supabase** cloud integration, data persistence, and fail-safe synchronization logic.
+* **Server - DigiLogBook (This Repo):** Developed by ([@mohammedrayyan12](https://github.com/mohammedrayyan12)). It manages the cloud integration, data persistence, and fail-safe synchronization logic.
 * **Client - Session Tracker:** Developed by ([@CodingMirage](https://github.com/CodingMirage)). It provides the desktop user interface for student attendance and local log entry.
 
 **Client Repository:** [Session-Tracker-Client](https://github.com/CodingMirage/JavaSwing-SessionTracker)
@@ -38,6 +38,14 @@ DigiLogBook is a distributed system consisting of two main components:
 
 ---
 
+## 🎯 What's New in v2.0 (The SQL Migration)
+
+The application has migrated from flat-file storage (`optionsData.csv`) to a **Relational Configuration Engine**. This allows for:
+- **Dynamic Category Management**: Add or remove fields like "Department" or "Subjects" directly from the UI without restarting.
+- **Universal SQL Dialects**: Auto-detects and supports PostgreSQL (Supabase), MySQL, SQLite, MSSQL, and Oracle using a smart dialect switcher.
+
+---
+
 ## ✨ Features
 
 ### 📊 **Data Management**
@@ -46,10 +54,16 @@ DigiLogBook is a distributed system consisting of two main components:
 - **Advanced Filtering**: Filter records by multiple criteria (department, semester, batch, subject, date range, time slots)
 - **In-Memory Processing**: Fast temporary data storage for quick operations
 
-### ☁️ **Cloud Synchronization**
+### ☁️ **Universal Cloud Synchronization**
+- **Dialect Auto-Detection**: Automatically switches SQL syntax (e.g., `SERIAL` vs `AUTO_INCREMENT`) based on your JDBC connection.
 - **Dual Database Support**: Local SQLite + Remote MySQL/PostgreSQL cloud database
 - **Automatic Sync**: Seamlessly synchronize data between local and cloud storage
 - **Connection Verification**: Test and verify cloud database credentials before saving
+
+### 📊 **Dynamic Data Management**
+- **Category Manager**: A dedicated interface to manage the organizational structure of your logs.
+- **Smart Grouping**: Sessions are dynamically grouped by the categories you define.
+- **Advanced Filtering**: Filter records based on your custom-defined batches, semesters, or subjects.
 
 ### 💾 **Export Capabilities**
 - **Multiple Formats**: Export to CSV or professionally formatted PDF
@@ -128,17 +142,14 @@ On first run, the application creates:
 
 **CSV Format:**
 ```csv
-Login Time,USN,Name,Sem,Dept,Subject,Batch,Logout Time,Session ID
-2024-11-20T08:30:15,1VI21CS001,John Doe,3,CSE,Data Structures,I,2024-11-20T10:10:45,session_001
+Login Time,USN,Name,Sem,Dept,Subject,Batch, ... , Logout Time,Session ID
+2024-11-20T08:30:15,1VI21CS001,John Doe,3,CSE,Data Structures,I, ... , 2024-11-20T10:10:45,session_001
 ```
-
 ### 3️⃣ **View & Filter Data**
-1. Click **"→ View"** to access existing records
-2. Use dropdown filters:
-   - **Subject**: Select specific lab subject
-   - **Department**: CSE, ISE, AIML, DS, ECE, MECH, CIVIL
-   - **Semester**: 1-8
-   - **Batch**: I, II, III
+1. **Access Records**: Click the **"→ View"** button from the main dashboard to load the records interface.
+2. **Dynamic Filtering**: The filtering system is now fully automated based on your `CONFIGURATION_TABLE`.
+   * **Custom Categories**: Any new category added (e.g., "Lab Assistant", "Cabin No") will automatically generate a corresponding dropdown filter in the UI.
+   * **Multi-Criteria Filtering**: Combine multiple dynamic attributes to narrow down specific lab sessions efficiently.
 3. Click **"Select Date/Time"** for advanced filtering:
    - Match specific date or date range
    - Match specific time slot or time range
@@ -150,7 +161,14 @@ Login Time,USN,Name,Sem,Dept,Subject,Batch,Logout Time,Session ID
 3. Choose format: PDF or CSV
 4. Pick save location
 
-### 5️⃣ **Configure Cloud Sync** (Optional)
+### 5️⃣ **Manage Configuration Tables**
+This section allows you to customize the organizational structure of the logbook without touching the code:
+
+* **Dynamic Categories**: Navigate to `Settings` → **Configuration Details** tab. Use the **"+ Add / Remove Categories"** button to create new structural keys like "Lab Assistant," "Room No," or "System ID."
+* **Reference Items**: Within each category, use the **"Manage [Category]"** dialog to search, add, or delete specific selectable values (e.g., adding a new Subject Code like `BXLX101`).
+* **Instant Sync**: Saving these changes triggers a real-time UI refresh, ensuring all dropdowns and filters throughout the app are updated immediately.
+
+### 6️⃣ **Configure Cloud Sync** 
 1. Click ⚙️ **Settings** icon
 2. Go to **"Cloud Database"** tab
 3. Click **"Add Cloud Database Info"**
@@ -158,9 +176,11 @@ Login Time,USN,Name,Sem,Dept,Subject,Batch,Logout Time,Session ID
    - JDBC URL (e.g., `jdbc:mysql://host:3306/database`)
    - Username
    - Password
+   * **Universal SQL Sync**: Simply provide a cloud JDBC URL; the system's **Universal SQL Engine** auto-detects the database provider (Supabase, MySQL, MSSQL, etc.) and initializes the optimized schema (Configuration Table and Records Table) automatically.
+
 5. Click **"Verify and Save"**
 
-### 6️⃣ **Setup Auto-Save/Delete**
+### 7️⃣ **Setup Auto-Save/Delete**
 1. Go to Settings → **"Auto Save/Delete"** tab
 2. Click **"Enable Auto Save"**
 3. Select auto-save directory
@@ -223,7 +243,7 @@ testing.skip.delete=false
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Technical Architecture
 
 ```
 DigiLogBook/
@@ -241,19 +261,26 @@ DigiLogBook/
 └── config.properties         # Application configuration
 ```
 
-### Database Schema
+### Database Schema (Universal)
+The system now uses a dynamic schema that adapts its data types to the connected database:
+
+**Table: CONFIGURATION_TABLE**
+| Column | Type | Description |
+|--------|------|-------------|
+| id | Primary Key | Auto-incremented (Dialect specific) |
+| category | String | The reference type (e.g., 'Subject', 'Dept') |
+| item_value | String | The actual value (e.g., 'Data Structures') |
+
 
 **Table: student_log / sessions**
-```sql
-CREATE TABLE student_log (
-    session_id TEXT PRIMARY KEY,
-    login_time TEXT,
-    logout_time TEXT,
-    usn TEXT,
-    name TEXT,
-    details TEXT
-);
-```
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| **session_id** | String (PK) | Unique identifier for the lab session (UUID/String) |
+| **login_time** | Text/String | Timestamp of student entry |
+| **logout_time** | Text/String | Timestamp of student exit |
+| **usn** | Text/String | University Seat Number of the student |
+| **name** | Text/String | Full name of the student |
+| **details** | JSON/LongText | Stores all dynamic attributes (Subject, Dept, Sem, etc.) in a JSON string |
 
 ---
 
