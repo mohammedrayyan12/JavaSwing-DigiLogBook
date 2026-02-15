@@ -83,9 +83,13 @@ class SingleGroupPanel extends JPanel {
 		headingContentPanel.add(headingLine1);
 
 		// Second line of the heading
-		JLabel headingLine2 = new JLabel(
-				"<html><p style='margin: 0; padding-left: 19; padding-bottom: 5;'>Sub: <b>" + grp.sub + "</b> &emsp; Dept: <b>" + grp.dept
-						+ "</b> &emsp; Sem: <b>" + grp.sem + "</b> &emsp; Batch: <b>" + grp.batch + "</b></p></html>");
+		StringBuilder attrText = new StringBuilder("<html><p style='margin: 0; padding-left: 19; padding-bottom: 5;'>");
+		grp.attributes.forEach((key, value) -> {
+			attrText.append(key).append(": <b>").append(value).append("</b> &emsp; ");
+		});
+		attrText.append("</p></html>");
+
+		JLabel headingLine2 = new JLabel(attrText.toString());
 		headingLine2.setFont(new Font("SansSerif", Font.PLAIN, 14));
 		headingLine2.setForeground(new Color(60, 60, 60));
 		headingContentPanel.add(headingLine2);
@@ -158,13 +162,44 @@ class SingleGroupPanel extends JPanel {
 	}
 
 	public static JTable getTable(List<SessionRecord> records) {
-		String[] columnNames = { "Login Time", "USN", "Name", "Sem", "Dept", "Subject", "Batch", "Logout Time",
-				"Session ID" };
-		DefaultTableModel model = new DefaultTableModel(columnNames, 0);
+		if (records.isEmpty()) return new JTable(new DefaultTableModel());
+
+		// 1. Identify all unique attribute keys present in this record set
+		// This ensures that if one record has "Lab Number" and others don't, the column still exists.
+		java.util.Set<String> dynamicColumns = new java.util.LinkedHashSet<>();
 		for (SessionRecord r : records) {
-			model.addRow(new Object[] {
-					r.loginTime, r.usn, r.name, r.sem, r.dept, r.sub, r.batch, r.logoutTime, r.sessionId
-			});
+			dynamicColumns.addAll(r.attributes.keySet());
+		}
+
+		// 2. Build Column Headers
+		java.util.List<String> columnNames = new java.util.ArrayList<>();
+		columnNames.add("Login Time");
+		columnNames.add("USN");
+		columnNames.add("Name"); 
+		
+		// Add all dynamic categories
+		columnNames.addAll(dynamicColumns);
+		
+		columnNames.add("Logout Time");
+		columnNames.add("Session ID");
+
+		DefaultTableModel model = new DefaultTableModel(columnNames.toArray(), 0);
+
+		// 3. Fill Rows
+		for (SessionRecord r : records) {
+			java.util.List<Object> row = new java.util.ArrayList<>();
+			row.add(r.loginTime);
+			row.add(r.usn);
+			row.add(r.name);
+
+			// Add values for each dynamic column
+			for (String col : dynamicColumns) {
+				row.add(r.attributes.getOrDefault(col, "-"));
+			}
+
+			row.add(r.logoutTime);
+			row.add(r.sessionId);
+			model.addRow(row.toArray());
 		}
 
 		return new JTable(model);

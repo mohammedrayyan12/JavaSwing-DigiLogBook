@@ -2,6 +2,8 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.sql.*;
+import java.util.Arrays;
+import java.util.List;
 
 
 
@@ -17,34 +19,61 @@ public class AddLogbookManager implements AutoCloseable {
 
 	// create in-memory database
 	private void createTable() throws SQLException {
-		String createTableSql = "CREATE TABLE temp (login_time TEXT, logout_time TEXT, name TEXT, usn TEXT, sem TEXT, dept TEXT, sub TEXT, batch TEXT, session_id TEXT PRIMARY KEY)";
-		try (PreparedStatement createTablePstmt = this.connection.prepareStatement(createTableSql)) {
-			createTablePstmt.executeUpdate();
+		// Match the order of your INSERT statement for clarity
+		String createTableSql = "CREATE TABLE temp (login_time TEXT, usn TEXT, name TEXT, details TEXT, logout_time TEXT, session_id TEXT PRIMARY KEY)";
+		try (Statement stmt = this.connection.createStatement()) {
+			stmt.executeUpdate(createTableSql);
+
+			// Add the Index for each category (Fast seaching => Binary Search)
+			for (String category : DataPlace.configMap.keySet()) {
+				// unique name for each index
+				String indexName = "idx_details_" + category;
+				
+				String indexSql = "CREATE INDEX IF NOT EXISTS " + indexName + 
+								" ON temp (json_extract(details, '$." + category + "'));";
+				
+				stmt.executeUpdate(indexSql);
+			}
 		}
 	}
 
 	// Method to import a CSV into the in-memory SQLite table
 	public void importCsvToDatabase(String csvFilePath) throws IOException, SQLException {
-		String insertSql = "INSERT or REPLACE INTO temp (login_time, usn, name, sem, dept, sub, batch, logout_time, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+		String insertSql = "INSERT or REPLACE INTO temp (login_time, usn, name, details, logout_time, session_id) VALUES (?, ?, ?, ?, ?, ?)";
 
 		try (PreparedStatement pstmt = this.connection.prepareStatement(insertSql);
 				BufferedReader reader = new BufferedReader(new FileReader(csvFilePath))) {
 
-			String line;
-			reader.readLine(); // Skip header line
-			this.connection.setAutoCommit(false); // Begin transaction for speed
+			// Read the header and map column names to indices
+			String headerLine = reader.readLine(); 
+			List<String> headers = Arrays.asList(headerLine.split(","));
 
+			this.connection.setAutoCommit(false); // Begin transaction
+
+			String line;
 			while ((line = reader.readLine()) != null) {
-				String[] values = line.split(",");
-				pstmt.setString(1, values[0]);
-				pstmt.setString(2, values[1]);
-				pstmt.setString(3, values[2]);
-				pstmt.setString(4, values[3]);
-				pstmt.setString(5, values[4]);
-				pstmt.setString(6, values[5]);
-				pstmt.setString(7, values[6]);
-				pstmt.setString(8, values[7]);
-                pstmt.setString(9, values[8]);
+				String[] values = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
+				
+				pstmt.setString(1, values[0]); // login_time
+				pstmt.setString(2, values[1]); // usn
+				pstmt.setString(3, values[2]); // name
+
+				// DYNAMIC JSON BUILDING
+				StringBuilder json = new StringBuilder("{");
+				// We start at index 3 and stop before the last two (logout and session)
+				for (int i = 3; i < values.length - 2; i++) {
+					String key = headers.get(i).trim();
+					String val = values[i].trim().replace("\"", "\\\""); // Escape quotes
+					
+					json.append("\"").append(key).append("\":\"").append(val).append("\"");
+					if (i < values.length - 3) json.append(",");
+				}
+				json.append("}");
+
+				pstmt.setString(4, json.toString()); // details
+				pstmt.setString(5, values[values.length - 2]); // logout_time
+				pstmt.setString(6, values[values.length - 1]); // session_id
+				
 				pstmt.addBatch();
 			}
 			pstmt.executeBatch();

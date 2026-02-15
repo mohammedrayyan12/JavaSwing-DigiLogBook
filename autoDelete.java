@@ -13,6 +13,7 @@ import javax.swing.SwingUtilities;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -57,10 +58,7 @@ class autoDelete {
 						"logout_time TEXT, " +
 						"usn TEXT, " +
 						"name TEXT, " +
-						"sem TEXT, " +
-						"dept TEXT, " +
-						"sub TEXT, " +
-						"batch TEXT" +
+						"details TEXT" +
 						");");
 			}
 
@@ -78,15 +76,16 @@ class autoDelete {
                 ResultSet resultSet = preparedStatement.executeQuery();
 
                 while (resultSet.next()) {
+                    String jsonDetails = resultSet.getString("details");
+    
+					
+					Map<String, String> attrMap = HelperFunctions.parseJsonToMap(jsonDetails);
                     records.add(new SessionRecord(
                             resultSet.getString("login_time"),
                             resultSet.getString("logout_time"),
                             resultSet.getString("usn"),
                             resultSet.getString("name"),
-                            resultSet.getString("sem"),
-                            resultSet.getString("dept"),
-                            resultSet.getString("sub"),
-                            resultSet.getString("batch"),
+                            attrMap,
                             resultSet.getString("session_id")
 
                     ));
@@ -99,9 +98,6 @@ class autoDelete {
                 return;
             }
 
-            // Define headers. Assuming the same columns as your JTable
-            String[] headers = new String[] { "Login Time", "USN", "Name", "Sem", "Dept", "Subject", "Batch",
-                    "Logout Time", "Session ID" };
                     
             // Ensure the directory exists
             File parentDir = saveFile.getParentFile();
@@ -115,22 +111,25 @@ class autoDelete {
 
             PrintWriter pw = new PrintWriter(new FileWriter(saveFile));
 
-            // Write the main header row
-            for (int i = 0; i < headers.length; i++) {
-                pw.print(headers[i]);
-                if (i < headers.length - 1)
-                    pw.print(",");
+            // Define headers.
+            pw.print("Login Time,USN,Name,");
+            for (String category : DataPlace.configMap.keySet()) {
+                pw.print(category + ",");
             }
-            pw.println();
+            pw.println("Logout Time,Session ID");
     
             for (SessionRecord record : records) {
                 pw.print(record.getLoginTime() + ",");
                 pw.print(record.getUsn() + ",");
                 pw.print(record.getName() + ",");
-                pw.print(record.getSem() + ",");
-                pw.print(record.getDept() + ",");
-                pw.print(record.getSub() + ",");
-                pw.print(record.getBatch() + ",");
+                
+                // Dynamic Categories (Subjects, Departments, etc.)
+                for (String category : DataPlace.configMap.keySet()) {
+                    // Get value from map, use empty string if not found to keep CSV columns aligned
+                    String val = record.attributes.getOrDefault(category, "");
+                    pw.print(val + ",");
+                }
+
                 pw.print(record.getLogoutTime() + ",");
                 pw.print(record.getSessionId());
                 pw.println();
@@ -148,7 +147,7 @@ class autoDelete {
                 );
                 
                 if (skipDelete) {
-                    System.out.println("⚠️ TESTING MODE: Skipping delete operation");
+                    System.out.println("\u26A0 TESTING MODE: Skipping delete operation");
                     System.out.println("   (Set testing.skip.delete=false to enable deletion)");
                 } else {
                     int deletedRows = deleteStatement.executeUpdate();
@@ -203,7 +202,7 @@ class autoDelete {
             );
             
             if (skipDelete) {
-                System.out.println("⚠️ TESTING MODE: Skipping cloud delete operation");
+                System.out.println("\u26A0 TESTING MODE: Skipping cloud delete operation");
                 System.out.println("   (Set testing.skip.delete=false to enable deletion)");
             } else {
                 if (lastRun != null) { // Don't delete on first run
@@ -211,7 +210,7 @@ class autoDelete {
                     System.out.println("✓ Deleted " + deletedRows + " records from CLOUD DB");
                 }
             }
-            //delete the DB ( UNCOMMENT WHILE RUNNING )
+            //delete the DB ( UNCOMMENT WHILE RUNNING ) // does the same as above else statement
             // if (lastRun != null) deleteStatement.executeUpdate();  //condition for not deleting DB the first time application runs
 
             // Record it in config file

@@ -10,11 +10,11 @@ import java.util.List;
 import java.util.Map;
 
 class SessionRecord {
-    String usn, name, sem, dept, sub, batch, sessionId;
+    String usn, name, sessionId;
     LocalDateTime loginTime, logoutTime;
+    Map<String, String> attributes;
 
-    public SessionRecord(String loginTime, String logoutTime, String usn, String name, String sem, String dept,
-            String sub, String batch, String sessionId) {
+    public SessionRecord(String loginTime, String logoutTime, String usn, String name, Map<String, String> attributes, String sessionId) {
         this.loginTime = LocalDateTime.parse(loginTime);
         if (logoutTime == null || logoutTime.equals("null"))
             this.logoutTime = null;
@@ -22,10 +22,7 @@ class SessionRecord {
             this.logoutTime = LocalDateTime.parse(logoutTime);
         this.usn = usn;
         this.name = name;
-        this.sem = sem;
-        this.dept = dept;
-        this.sub = sub;
-        this.batch = batch;
+        this.attributes = attributes;
         this.sessionId = sessionId;
     }
 
@@ -45,43 +42,21 @@ class SessionRecord {
         return this.name;
     }
 
-    public String getSem() {
-        return this.sem;
-    }
-
-    public String getDept() {
-        return this.dept;
-    }
-
-    public String getSub() {
-        return this.sub;
-    }
-
-    public String getBatch() {
-        return this.batch;
-    }
-
     public String getSessionId() {
         return this.sessionId;
     }
 }
 
 class SessionGroup {
-    public String sub;
-    public String dept;
-    public String sem;
-    public String batch;
+    public Map<String,String> attributes;
     public String slot;
     public String date;
     public List<SessionRecord> records = new ArrayList<>();
 
-    public SessionGroup(String date, String slot, String sub, String dept, String sem, String batch) {
+    public SessionGroup(String date, String slot, Map<String, String> attributes) {
         this.date = date;
         this.slot = slot;
-        this.sub = sub;
-        this.dept = dept;
-        this.sem = sem;
-        this.batch = batch;
+        this.attributes = attributes;
     }
 }
 
@@ -92,9 +67,12 @@ class SessionGrouper {
         Map<String, List<SessionRecord>> grouped = new HashMap<>();
 
         for (SessionRecord r : allRecords) {
-            String key = r.getSub() + "_" + r.getDept() + "_" + r.getSem() + "_" + r.getBatch() + "_"
-                    + getSlot(r.getLoginTime(), r.getLogoutTime())
-                    + r.getLoginTime().toLocalDate();
+            StringBuilder attrKey = new StringBuilder();
+            r.attributes.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e -> attrKey.append(e.getValue()).append("_"));
+
+            String key = attrKey.toString() + getSlot(r.getLoginTime(), r.getLogoutTime()) + r.getLoginTime().toLocalDate();
             grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
         }
 
@@ -142,8 +120,7 @@ class SessionGrouper {
 					|| (!entryDate.isBefore(selectedFromDate) && !entryDate.isAfter(selectedToDate)))) {
 				if (slotCondition) {
 
-					SessionGroup sg_ = new SessionGroup(recorDate, slot, first_.sub, first_.dept, first_.sem,
-							first_.batch);
+					SessionGroup sg_ = new SessionGroup(recorDate, slot, first_.attributes);
 					sg_.records.addAll(groupRecords);
 					result.add(sg_);
 				}

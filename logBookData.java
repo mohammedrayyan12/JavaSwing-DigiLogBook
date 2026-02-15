@@ -1,15 +1,11 @@
 import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 import java.awt.*;
 import java.awt.event.*;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
+
 import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,11 +13,12 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.sql.*;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 class DataPlace {
@@ -35,15 +32,22 @@ class DataPlace {
 	private JCheckBox matchD, matchT;
 	static JButton exportButton;
     private JPanel datePanel;
-    private JComboBox<String> sub, department, batch, sem;
+
+
+	// Store the generated combos to retrieve values for filtering
+	static List<JComboBox<String>> dynamicCombos = new ArrayList<>();
+
     private static String table = ConfigLoader.config.getProperty("LOCAL_TABLE"); 
     static boolean matchSlotConditon = false;
-    private String editing = "nah";
 
     private static String JDBC_URL_cloud = ConfigLoader.config.getProperty("JDBC_URL_cloud");
     private final static String JDBC_URL_local = ConfigLoader.getLocalDBUrl(); 
 	private static String USERNAME_cloud = ConfigLoader.config.getProperty("JDBC_USERNAME_cloud");
 	private static String PASSWORD_cloud = ConfigLoader.config.getProperty("JDBC_PASSWORD_cloud");
+
+	// Store categories and their options
+	static Map<String, List<String>> configMap = HelperFunctions.loadConfigMap(JDBC_URL_local);
+
 
     DataPlace() {
 		jf = new JFrame("Data Zone");
@@ -55,59 +59,72 @@ class DataPlace {
 		jf.setVisible(true);
 	}
 
-    static void syncDatabases() {
-        if (table.equals("temp")) return;
+	
+	static void syncDatabases() {
+		
+		if (table.equals("temp")) return;
+
+		String localTable = ConfigLoader.config.getProperty("LOCAL_TABLE");
+		String cloudTable = ConfigLoader.config.getProperty("CLOUD_TABLE");
 
 		try (Connection cloudConn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud);
-				Connection localConn = DriverManager.getConnection(JDBC_URL_local)) {
+			Connection localConn = DriverManager.getConnection(JDBC_URL_local)) {
 
-			// Setup local database table if it doesn't exist
+			// 1. Setup local table to match cloud structure
 			try (Statement stmt = localConn.createStatement()) {
-				stmt.executeUpdate("CREATE TABLE IF NOT EXISTS " +  ConfigLoader.config.getProperty("LOCAL_TABLE") + " (" +
+				stmt.executeUpdate("CREATE TABLE IF NOT EXISTS " + localTable + " (" +
 						"session_id TEXT PRIMARY KEY, " +
 						"login_time TEXT, " +
 						"logout_time TEXT, " +
 						"usn TEXT, " +
 						"name TEXT, " +
-						"sem TEXT, " +
-						"dept TEXT, " +
-						"sub TEXT, " +
-						"batch TEXT" +
+						"details TEXT" + // JSON stored as TEXT in SQLite
 						");");
+
+				// 2. Add the Index for each category (Fast seaching => Binary Search)
+				for (String category : configMap.keySet()) {
+					// unique name for each index
+					String indexName = "idx_details_" + category;
+					
+					String indexSql = "CREATE INDEX IF NOT EXISTS " + indexName + 
+									" ON " + localTable + " (json_extract(details, '$." + category + "'));";
+					
+					stmt.executeUpdate(indexSql);
+				}
 			}
+		
 
-			// Fetch all data from cloud
-			PreparedStatement cloudStmt = cloudConn.prepareStatement("SELECT * FROM " + ConfigLoader.config.getProperty("CLOUD_TABLE"));
-			ResultSet cloudRs = cloudStmt.executeQuery();
-
-			// Insert into local database
+			// 2. Fetch all from Cloud
+			String selectSql = "SELECT session_id, login_time, logout_time, usn, details FROM " + cloudTable;
+			
 			localConn.setAutoCommit(false);
-			String insertSql = "INSERT or REPLACE INTO " +  ConfigLoader.config.getProperty("LOCAL_TABLE") + " (login_time, logout_time, usn, name, sem, dept, sub, batch, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-			PreparedStatement localStmt = localConn.prepareStatement(insertSql);
-			while (cloudRs.next()) {
-				localStmt.setString(1, cloudRs.getString("login_time"));
-				localStmt.setString(2, cloudRs.getString("logout_time"));
-				localStmt.setString(3, cloudRs.getString("usn"));
-				localStmt.setString(4, cloudRs.getString("name"));
-				localStmt.setString(5, cloudRs.getString("sem"));
-				localStmt.setString(6, cloudRs.getString("dept"));
-				localStmt.setString(7, cloudRs.getString("sub"));
-				localStmt.setString(8, cloudRs.getString("batch"));
-				localStmt.setString(9, cloudRs.getString("session_id"));
-				localStmt.addBatch();
-			}
-			localStmt.executeBatch();
-			localConn.commit();
+			String insertSql = "INSERT OR REPLACE INTO " + localTable + 
+							" (session_id, login_time, logout_time, usn, name, details) VALUES (?, ?, ?, ?, ?, ?)";
+			
+			try (PreparedStatement cloudStmt = cloudConn.prepareStatement(selectSql);
+				ResultSet rs = cloudStmt.executeQuery();
+				PreparedStatement localStmt = localConn.prepareStatement(insertSql)) {
 
-			System.out.println("Sync complete.");
+				while (rs.next()) {
+					localStmt.setString(1, rs.getString("session_id"));
+					localStmt.setString(2, rs.getString("login_time"));
+					localStmt.setString(3, rs.getString("logout_time"));
+					localStmt.setString(4, rs.getString("usn"));
+					localStmt.setString(5, rs.getString("name"));
+					localStmt.setString(6, rs.getString("details")); // Just move the entire string => parse the string to behave like json
+					localStmt.addBatch();
+				}
+				localStmt.executeBatch();
+			}
+			localConn.commit();
+			localConn.setAutoCommit(true);
+			System.out.println("✓ Mirror Sync Complete.");
 		} catch (SQLException e) {
 			e.printStackTrace();
-			System.out.println("Failed to Sync Databases");
 		}
 	}
-	
-    public List<SessionGroup> getDatafromDataBase(String table, JPanel mainContent, String sSub, String sDept,
-    String sSem, String sBatch) {
+    
+	public List<SessionGroup> getDatafromDataBase(String table, JPanel mainContent, Map<String, String> currentFilters) {
 
         // configure which database to connect
         Connection connection = null;
@@ -121,97 +138,28 @@ class DataPlace {
 			}
 		}
 
-		editing = "nah";
-        if (sSub.equals("+")) editing = "Subjects";
-		else if (sDept.equals("+")) editing = "Departments";
-		else if (sSem.equals("+")) editing = "Semester";
-		else if (sBatch.equals("+")) editing = "Batches";
-		if (!editing.equals("nah")) {
-			JDialog dialog = new JDialog(jf, editing, true);
-			dialog.setLayout(new BorderLayout());
-			JButton save = new JButton("Save");
-
-			JTextArea textArea = new JTextArea();
-			JScrollPane scrollPane = new JScrollPane(textArea);
-			dialog.add(scrollPane, BorderLayout.CENTER);
-			dialog.add(save, BorderLayout.SOUTH);
-
-			save.addActionListener( new ActionListener() {
-				public void actionPerformed(ActionEvent e) {
-					String newText = String.join(",", textArea.getText().split("\n")) + ",   +";
-					try {
-						// Read existing lines into a list
-						List<String> lines = Files.lines(OptionsManager.PERSISTENT_FILE_PATH).collect(Collectors.toList());
-						
-						// Modify lines based on condition
-						for (int i = 0; i < lines.size(); i++) {
-							String existingLine = lines.get(i);
-							// Replace with new text if condition meets
-							if (existingLine.contains(editing)) {  
-								lines.set(i, newText.trim()); 
-							}
-						}
-						
-						// Write updated lines back to the file
-						try (BufferedWriter writer = new BufferedWriter(new FileWriter(OptionsManager.PERSISTENT_FILE_PATH.toFile()))) {
-							for (String line : lines) {
-								writer.write(line);
-								writer.newLine();
-							}
-						}
-					} catch (IOException ex) {
-						JOptionPane.showMessageDialog(null, "Error saving file: " + ex.getMessage());
-					}
-					dialog.dispose();
-					
-				}
-			});
-
-			textArea.setText("");
-			try {
-			Files.lines(OptionsManager.PERSISTENT_FILE_PATH).forEach(line -> { if (line.contains(editing)) Arrays.stream(line.split(",")).forEach(word -> {if (!word.contains("+")) textArea.append(word + "\n"); } );});
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-			dialog.setSize(400, 280);
-			dialog.setLocationRelativeTo(mainContent);
-			dialog.setVisible(true);
-
-			jf.remove(mainContent);
-			showAddViewLogBookPanel();
-			jf.revalidate();
-			jf.repaint();
-		};
-
 		// each entry is stored in records (EVERYTHING)
 		List<SessionGroup> groups = new ArrayList<>();
 
         try {
-
 			// Create a StringBuilder to construct the query
 			StringBuilder showQueryBuilder = new StringBuilder("SELECT * FROM " + table + " WHERE 1=1");
 			List<String> params = new ArrayList<>();
 
 			// Conditionally append WHERE clauses
-			if (!sDept.equals("Departments")) {
-				showQueryBuilder.append(" AND dept=?");
-				params.add(sDept);
-			}
-
-			if (!sBatch.equalsIgnoreCase("Batches")) {
-				showQueryBuilder.append(" AND batch=?");
-				params.add(sBatch);
-			}
-
-			if (!sSem.equals("Semester")) {
-				showQueryBuilder.append(" AND sem=?");
-				params.add(sSem);
-			}
-
-			// Add the new sSub parameter
-			if (!sSub.equalsIgnoreCase("Subjects")) {
-				showQueryBuilder.append(" AND sub=?"); 
-				params.add(sSub);
+			if (currentFilters != null) {
+				for (Map.Entry<String, String> filter : currentFilters.entrySet()) {
+					String category = filter.getKey();
+					String value = filter.getValue();
+					
+					// Check if user selected something other than the default header (e.g., "Subjects")
+					if (!value.equalsIgnoreCase(category)) {
+						showQueryBuilder.append(" AND json_extract(details, '$.")
+										.append(category)
+										.append("') = ?");
+						params.add(value);
+					}
+				}
 			}
 
 			// Add the ORDER BY clause
@@ -232,17 +180,18 @@ class DataPlace {
 
 
 				while (resultSet.next()) {
+					String jsonDetails = resultSet.getString("details");
+    
+					// Convert the JSON string into a Map of ALL available attributes
+					Map<String, String> attrMap = HelperFunctions.parseJsonToMap(jsonDetails);
+
 					records.add(new SessionRecord(
 							resultSet.getString("login_time"),
 							resultSet.getString("logout_time"),
 							resultSet.getString("usn"),
 							resultSet.getString("name"),
-							resultSet.getString("sem"),
-							resultSet.getString("dept"),
-							resultSet.getString("sub"),
-							resultSet.getString("batch"),
+							attrMap,
 							resultSet.getString("session_id")
-
 					));
 				}
                 System.out.println("Data Retrived/Reloaded");
@@ -264,14 +213,14 @@ class DataPlace {
 
     }
 
-    void showData(String table, JPanel mainContent, String sSub, String sDept, String sSem, String sBatch) {
+    void showData(String table, JPanel mainContent, Map<String, String> currentFilters) {
 
 		// remove previously present content
 		if (mainContent.getComponentCount() > 1)
 			mainContent.remove(1);
 
 		// Grouped records
-		List<SessionGroup> groups = getDatafromDataBase(table, mainContent, sSub, sDept, sSem, sBatch);
+		List<SessionGroup> groups = getDatafromDataBase(table, mainContent, currentFilters);
 
         JScrollPane scroll = new JScrollPane(new TimeGroupPanel(groups));
 
@@ -391,8 +340,7 @@ class DataPlace {
 				matchSlotConditon = !matchSlotConditon;
 			}
 			// Trigger data refresh
-            showData(table, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
-				sem.getSelectedItem().toString().trim(), batch.getSelectedItem().toString().trim());
+            showData(table, mainContent, HelperFunctions.getCurrentFilters());
 		};
 
         everything.addActionListener(dialogActionListener);
@@ -515,14 +463,16 @@ class DataPlace {
 
 							boolean verification = CloudDataBaseInfo.verification(JDBC_URL_cloud,USERNAME_cloud,PASSWORD_cloud);
 
+							ConfigLoader.saveCloudDbConfig(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud, verification);
+							
 							if(!verification) {
 								verifiedorNot.setText("Not Verified");
 								verifiedorNot.setForeground(Color.RED); 
 							} else {
+								CloudDataBaseInfo.createTables(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud);
 								verifiedorNot.setText("Verified");
 								verifiedorNot.setForeground(new Color(52, 199, 89)); // Green
 							}
-							ConfigLoader.saveCloudDbConfig(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud, verification);
 						}
 						settingsDialog.pack();
 					});
@@ -573,19 +523,23 @@ class DataPlace {
 							USERNAME_cloud = cloudDatabaseUserField.getText().trim();
 							PASSWORD_cloud = new String(cloudDatabasePsswdField.getPassword()).trim();
 
+
 							boolean verification = CloudDataBaseInfo.verification(JDBC_URL_cloud,USERNAME_cloud,PASSWORD_cloud);
+
+							ConfigLoader.saveCloudDbConfig(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud, verification );
+
 							if(!verification) {
 								verifiedorNot.setText("Not Verified");
 								verifiedorNot.setForeground(Color.RED); 
 							} else {
+								CloudDataBaseInfo.createTables(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud);
 								verifiedorNot.setText("Verified");
 								verifiedorNot.setForeground(new Color(52, 199, 89)); // Green
 							}
 
-							ConfigLoader.saveCloudDbConfig(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud, verification );
-
 							addInfoDialog.dispose();
 							settingsDialog.dispose();
+							settingsButton.putClientProperty("targetTab", 2);
 							settingsButton.doClick(); // to repaint Settings Dialog
 						});
 
@@ -615,7 +569,7 @@ class DataPlace {
 				gbc.weightx = 1.0; 
 
 				if (Boolean.parseBoolean(ConfigLoader.config.getProperty("testing.skip.delete", "false"))) {
-					JLabel warningLabel = new JLabel("⚠️ Testing Mode: Deletions are disabled");
+					JLabel warningLabel = new JLabel("\u26A0 Testing Mode: Deletions are disabled");
 					warningLabel.setForeground(Color.RED);
 					warningLabel.setFont(new Font("Arial", Font.BOLD, 12));
 					gbc.gridy = iY++;
@@ -836,77 +790,97 @@ class DataPlace {
 			};
 
 			Callable<JPanel> ConfigurationFolder = () -> {
-				JPanel mainPanel = new JPanel();
-				mainPanel.setLayout(new GridBagLayout());
-				GridBagConstraints gbc = new GridBagConstraints();
-				gbc.insets = new Insets(5, 10, 5, 10);
-				gbc.fill = GridBagConstraints.HORIZONTAL;
-				gbc.gridx = 0;
-				gbc.gridy = 0;
+				JPanel mainPanel = new JPanel(new GridBagLayout());
 
+				final Runnable[] refreshConfigurationFolder = new Runnable[1];
 
-				// --- SECTION: Edit Options ---
-				JLabel label = new JLabel("\u2699 Edit Application References");
-				label.setFont(new Font("SansSerif", Font.BOLD, 14));
-				mainPanel.add(label, gbc);
+				// As Callable can only be called once, create a helper method (runnable) that can be called anytime to refresh the UI 
+				refreshConfigurationFolder[0] = () -> {
+					mainPanel.removeAll(); // Clear existing buttons
+					GridBagConstraints gbc = new GridBagConstraints();
+					gbc.insets = new Insets(5, 10, 5, 10);
+					gbc.fill = GridBagConstraints.HORIZONTAL;
+					gbc.gridx = 0;
+					gbc.gridy = 0;
 
-				String[] categories = {"Subjects", "Departments", "Batches", "Semester"};
-				
-				for (String cat : categories) {
+					// --- SECTION: Edit Options ---
+					JLabel label = new JLabel("\u2699 Edit Application References");
+					label.setFont(new Font("SansSerif", Font.BOLD, 14));
+					mainPanel.add(label, gbc);
+
+					// Dynamic Options to manage
 					gbc.gridy++;
-					JButton btn = new JButton("Manage " + cat);
-					btn.addActionListener(ee -> HelperFunctions.showEditDialog(cat, mainPanel));
-					mainPanel.add(btn, gbc);
-				}
+					JButton manageCatsBtn = new JButton("+ Add / Remove Categories");
+					manageCatsBtn.setFont(new Font("SansSerif", Font.ITALIC, 12));
+					// This helper would handle adding/deleting keys from the config table
+					manageCatsBtn.addActionListener(ee -> HelperFunctions.showCategoryManagerDialog(mainPanel,refreshConfigurationFolder[0]));
+					mainPanel.add(manageCatsBtn, gbc);
 
-				// --- SECTION: Danger Zone ---
-				gbc.gridy++;
-    			gbc.insets = new Insets(30, 10, 10, 10);
-				JButton deleteConfigurations = new JButton("\uD83D\uDDD1 Delete Configuration");
-				deleteConfigurations.setBackground(new Color(220, 53, 69)); 
-				deleteConfigurations.setForeground(Color.WHITE); 
-				deleteConfigurations.setFocusPainted(false);
-				deleteConfigurations.setFont(new Font("SansSerif", Font.BOLD, 12));
-
-				// Makes the background color visible on MacOS and some Windows themes
-				deleteConfigurations.setContentAreaFilled(true);
-				deleteConfigurations.setOpaque(true);
-				deleteConfigurations.setBorderPainted(false);
-				mainPanel.add(deleteConfigurations, gbc);
-
-				deleteConfigurations.addActionListener(ee -> {
-					String message = "Are you sure you want to delete all configurations?\n" +
-                         "This action is permanent and will terminate the application.";
-					String heading = "Confirm Critical Deletion";
-
-					int response = JOptionPane.showConfirmDialog(
-						mainPanel, 
-						message, 
-						heading, 
-						JOptionPane.YES_NO_OPTION, 
-						JOptionPane.WARNING_MESSAGE
-					);
-
-					if (response == JOptionPane.YES_OPTION) {
-						Path CONFIG_DIR_PATH = Paths.get(System.getProperty("user.home"), ".DigiLogBook");
-						ConfigLoader.deleteConfigFolder(CONFIG_DIR_PATH);
-						
-						// Terminate the app
-						System.out.println("Terminating Application...");
-						System.exit(0);
+					Set<String> categories = DataPlace.configMap.keySet(); 
+					
+					for (String cat : categories) {
+						gbc.gridy++;
+						JButton btn = new JButton("Manage " + cat);
+						btn.addActionListener(ee -> HelperFunctions.showEditDialog(cat, mainPanel));
+						mainPanel.add(btn, gbc);
 					}
-				});
 
+					// --- SECTION: Danger Zone ---
+					gbc.gridy++;
+					gbc.insets = new Insets(30, 10, 10, 10);
+					JButton deleteConfigurations = new JButton("\uD83D\uDDD1 Delete Configuration");
+					deleteConfigurations.setBackground(new Color(220, 53, 69)); 
+					deleteConfigurations.setForeground(Color.WHITE); 
+					deleteConfigurations.setFocusPainted(false);
+					deleteConfigurations.setFont(new Font("SansSerif", Font.BOLD, 12));
 
+					// Makes the background color visible on MacOS and some Windows themes
+					deleteConfigurations.setContentAreaFilled(true);
+					deleteConfigurations.setOpaque(true);
+					deleteConfigurations.setBorderPainted(false);
+					mainPanel.add(deleteConfigurations, gbc);
+
+					deleteConfigurations.addActionListener(ee -> {
+						String message = "Are you sure you want to delete all configurations?\n" +
+							"This action is permanent and will terminate the application.";
+						String heading = "Confirm Critical Deletion";
+
+						int response = JOptionPane.showConfirmDialog(
+							mainPanel, 
+							message, 
+							heading, 
+							JOptionPane.YES_NO_OPTION, 
+							JOptionPane.WARNING_MESSAGE
+						);
+
+						if (response == JOptionPane.YES_OPTION) {
+							Path CONFIG_DIR_PATH = Paths.get(System.getProperty("user.home"), ".DigiLogBook");
+							ConfigLoader.deleteConfigFolder(CONFIG_DIR_PATH);
+							
+							// Terminate the app
+							System.out.println("Terminating Application...");
+							System.exit(0);
+						}
+					});
+
+					
+					mainPanel.revalidate();
+        			mainPanel.repaint();
+
+					settingsDialog.pack();
+				};
+
+				refreshConfigurationFolder[0].run();
 				return mainPanel;
 
 			};
+			
 			JTabbedPane ooptions = new JTabbedPane();
 
 			try {
-				ooptions.addTab("Cloud Database", CloudDBConfig.call());
-				ooptions.addTab("Auto Save/Delete", AutoDeleteConfig.call());
 				ooptions.addTab("Configuration Details", ConfigurationFolder.call());
+				ooptions.addTab("Auto Save/Delete", AutoDeleteConfig.call());
+				ooptions.addTab("Cloud Database", CloudDBConfig.call());
 			} catch (Exception e1) {
 				System.err.println("ERROR: While Adding Tabs to Settings Dialog");
 				e1.printStackTrace();
@@ -914,6 +888,13 @@ class DataPlace {
 			ooptions.addChangeListener(ee -> {
 				settingsDialog.pack();
 			});
+
+			Object target = settingsButton.getClientProperty("targetTab");
+			if (target instanceof Integer) {
+				ooptions.setSelectedIndex((Integer) target);
+				// Clear the property so it doesn't open that tab every time thereafter
+				settingsButton.putClientProperty("targetTab", null);
+			}
 			
 			// Add main panel to the center of the settings dialog
             settingsDialog.add(ooptions, BorderLayout.CENTER); 
@@ -979,7 +960,7 @@ class DataPlace {
                 ConfigLoader.config.getProperty("CLOUD_DB_VERIFIED", "false")
             );
 
-            if (isVerified || isTestingPhase) {
+            if (isVerified) {
                 showAddViewLogBookPanel(); 
 			} else {
                 Object[] options = {"Verify","Maybe Later"};
@@ -995,7 +976,8 @@ class DataPlace {
                 );
                 
                 if (choice == JOptionPane.OK_OPTION) {
-                    settingsButton.doClick(); 
+					settingsButton.putClientProperty("targetTab", 2);
+                    settingsButton.doClick();
                 }
             }
         });
@@ -1021,7 +1003,6 @@ class DataPlace {
 			try {
 				logBookData.manager = new AddLogbookManager();
 				for (File file: selectedFiles) {
-					// Call the import method with the user-selected file path
 					String csvFilePath = file.getAbsolutePath();
 					logBookData.manager.importCsvToDatabase(csvFilePath);
 				}
@@ -1046,8 +1027,7 @@ class DataPlace {
 		mainContent.add(createOptionsPanel(), BorderLayout.NORTH);
 
         syncDatabases();
-        showData(table, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
-				sem.getSelectedItem().toString().trim(), batch.getSelectedItem().toString().trim());
+        showData(table, mainContent, HelperFunctions.getCurrentFilters());
 
 		jf.remove(view);
 		jf.add(mainContent);
@@ -1069,52 +1049,43 @@ class DataPlace {
 
 		optionsPanel.add(new JLabel("  ")); //Spacer
 
-		try (BufferedReader reader = new BufferedReader(new FileReader(OptionsManager.PERSISTENT_FILE_PATH.toFile())); ){
-			String line;
-			
-    		int linesCount = (int) Files.lines(OptionsManager.PERSISTENT_FILE_PATH).count();
+		dynamicCombos.clear();
 
-			String[] labSubjects = new String[linesCount];
-			String[] departments = new String[linesCount];
-			String[] batches = new String[linesCount];
-			String[] sems = new String[linesCount];
-
-			while ( (line = reader.readLine()) != null) {
-				if (line.contains("Subjects")) labSubjects = line.split(",");
-				
-				else if (line.contains("Departments")) departments = line.split(",");
-				
-				else if (line.contains("Batches")) batches = line.split(",");
-				else if (line.contains("Semester")) sems = line.split(",");
+		// Logic to get values for filtering
+		ActionListener actionListener = e -> {
+			Map<String, String> currentFilters = new HashMap<>();
+			for (JComboBox<String> combo : dynamicCombos) {
+				String category = combo.getName();
+				String selected = combo.getSelectedItem().toString().trim();
+				currentFilters.put(category, selected);
 			}
-		
-			sub = new JComboBox<>(labSubjects);
-			optionsPanel.add(sub);
+			showData(table, mainContent, currentFilters); 
+		};
 
-			department = new JComboBox<>(departments);
-			optionsPanel.add(department);
-
-			batch = new JComboBox<>(batches);
-			optionsPanel.add(batch);
-
-			sem = new JComboBox<>(sems);
-			optionsPanel.add(sem);
-		} catch (IOException e) {
-			e.printStackTrace();
-			JOptionPane.showMessageDialog(null, "Failed to read user options file.", "Read Error", JOptionPane.ERROR_MESSAGE);
+		// Loop through your stored configuration to build the UI
+		for (Map.Entry<String, List<String>> entry : configMap.entrySet()) {
+			String categoryName = entry.getKey();
+			List<String> options = entry.getValue();
+			
+			JComboBox<String> combo = new JComboBox<>(options.toArray(new String[0]));
+			combo.setName(categoryName); 
+			
+			combo.addActionListener(e -> {
+				((JComboBox) e.getSource()).setPopupVisible(false);
+				actionListener.actionPerformed(e);
+			});
+			
+			dynamicCombos.add(combo);
+			optionsPanel.add(combo);
 		}
 
-        optionsPanel.add(new JLabel("  ")); // Spacer
+		optionsPanel.add(new JLabel("  ")); // Spacer
 
 		JButton selectDateTime = new JButton("Select Date/Time");
 		optionsPanel.add(selectDateTime);
 
         exportButton = new JButton("Export");
 		optionsPanel.add(exportButton);
-
-        ActionListener actionListener = e -> 
- 			showData(table, mainContent, sub.getSelectedItem().toString().trim(), department.getSelectedItem().toString().trim(),
-			sem.getSelectedItem().toString().trim(), batch.getSelectedItem().toString().trim());
 
 		ActionListener actionListenerCombo = e ->{ 
 			((JComboBox) e.getSource()).setPopupVisible(false);	
@@ -1127,10 +1098,6 @@ class DataPlace {
 				new String[] { "Ongoing", "09:20", "10:10", "11:00", "12:15", "12:55", "14:20", "15:10", "16:00" });
 		endTime.setSelectedItem(endTime.getItemAt(endTime.getItemCount() - 1));
 
-		sub.addActionListener(actionListenerCombo);
-		department.addActionListener(actionListenerCombo);
-		batch.addActionListener(actionListenerCombo);
-		sem.addActionListener(actionListenerCombo);
         startTime.addActionListener(actionListenerCombo);
 		endTime.addActionListener(actionListenerCombo);
 
@@ -1233,6 +1200,17 @@ public class logBookData {
     static AddLogbookManager manager;
 
     public static void main(String[] args) {
+
+		// Create Application Folder if not exist
+		final String APP_DIR_NAME = "DigiLogBook";
+
+		final Path CONFIG_DIR_PATH = Paths.get(System.getProperty("user.home"), "." + APP_DIR_NAME);
+		
+		if (!CONFIG_DIR_PATH.toFile().exists()) {
+			CONFIG_DIR_PATH.toFile().mkdirs();
+			System.out.println("Created Application Folder at " + CONFIG_DIR_PATH);
+		}
+
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
                 new DataPlace();

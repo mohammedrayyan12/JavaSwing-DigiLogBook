@@ -119,7 +119,6 @@ java -cp ./lib/mysql-connector-j-9.3.0.jar:./lib/pdfbox-app-3.0.5.jar:./lib/sqli
 On first run, the application creates:
 - Configuration directory: `~/.DigiLogBook/`
 - Config file: `config.properties`
-- Options file: `optionsData.csv`
 - Local database: `data.db`
 
 ### 2️⃣ **Import Session Data**
@@ -197,18 +196,6 @@ cloud.auto.delete.last.run.date=2024-11-20
 # Testing/Development
 testing.skip.delete=false
 ```
-
-### optionsData.csv
-Customize dropdown options:
-```csv
-Subjects,BXLX101,BXLX102,BXXX3L3,BXXX5L5,OTHERS...,   +
-Departments,CSE,ISE,AIML,DS,ECE,MECH,CIVIL,   +
-Batches,I,II,III,   +
-Semester,1,2,3,4,5,6,7,8,   +
-```
-
-**Note**: The `+` button allows adding new options directly from the UI.
-
 ---
 
 ## 📸 Screenshots
@@ -251,8 +238,7 @@ DigiLogBook/
 │   ├── sqlite-jdbc-3.50.3.0.jar
 │   ├── mysql-connector-j-9.3.0.jar
 │   └── pdfbox-app-3.0.5.jar
-├── config.properties         # Application configuration
-└── optionsData.csv          # UI dropdown options
+└── config.properties         # Application configuration
 ```
 
 ### Database Schema
@@ -265,10 +251,7 @@ CREATE TABLE student_log (
     logout_time TEXT,
     usn TEXT,
     name TEXT,
-    sem TEXT,
-    dept TEXT,
-    sub TEXT,
-    batch TEXT
+    details TEXT
 );
 ```
 

@@ -17,16 +17,26 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Comparator;
 import java.util.GregorianCalendar;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.List;
+import java.util.Map;
+
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
@@ -42,7 +52,160 @@ import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 
 
 class HelperFunctions {
+
+    public static Map<String, List<String>> loadConfigMap(String JDBC_URL_local) {
+		Map<String, List<String>> map = new LinkedHashMap<>(); // preserves the order of categories
+		String confTable = ConfigLoader.config.getProperty("CONFIGURATION_TABLE");
+		
+		try (Connection conn = DriverManager.getConnection(JDBC_URL_local);
+			Statement stmt = conn.createStatement();
+			ResultSet rs = stmt.executeQuery("SELECT category, item_value FROM " + confTable + " ORDER BY category, id")) {
+
+			while (rs.next()) {
+				String category = rs.getString("category");
+				String value = rs.getString("item_value");
+				
+				// If it's a new category, initialize the list with the category name as the first item (Header)
+				map.computeIfAbsent(category, k -> {
+					List<String> list = new ArrayList<>();
+					list.add(k); // e.g., First item is "Subjects"
+					return list;
+				});
+				
+				map.get(category).add(value);
+			}
+		} catch (SQLException e) {
+			System.err.println("Error loading configMap from local DB");
+			e.printStackTrace();
+		}
+		return map;
+	}
+
+
+    public static Map<String, String> getCurrentFilters() {
+        Map<String, String> filters = new HashMap<>();
+        for (JComboBox<String> combo : DataPlace.dynamicCombos) {
+            String category = combo.getName(); 
+            String selected = combo.getSelectedItem().toString().trim();
+            filters.put(category, selected);
+        }
+        return filters;
+    }
     
+    public static Map<String, String> parseJsonToMap(String json) {
+        Map<String, String> map = new HashMap<>();
+        if (json == null || json.isEmpty() || json.equals("{}")) return map;
+
+        // Remove curly braces and split by ","
+        String clean = json.substring(1, json.length() - 1);
+        String[] pairs = clean.split(",");
+
+        for (String pair : pairs) {
+            String[] keyValue = pair.split(":");
+            if (keyValue.length == 2) {
+                // Strip quotes and whitespace
+                String key = keyValue[0].replaceAll("\"", "").trim();
+                String value = keyValue[1].replaceAll("\"", "").trim();
+                map.put(key, value);
+            }
+        }
+        return map;
+    }
+
+    public static void showCategoryManagerDialog(JPanel parent, Runnable onRefresh) {
+        Window parentWindow = SwingUtilities.getWindowAncestor(parent);
+        JDialog dialog = new JDialog(parentWindow, "Manage Categories", Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setLayout(new BorderLayout());
+
+        // 1. Get current categories from the keys of your memory map
+        List<String> categories = new ArrayList<>(DataPlace.configMap.keySet());
+        final boolean[] dataChanged = {false};
+
+        JPanel listPanel = new JPanel();
+        listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+        listPanel.setBackground(Color.WHITE);
+
+        // Initial render of categories
+        renderCategoryRows(listPanel, categories, dataChanged);
+
+        // 2. Footer for adding a New Category
+        JPanel footer = new JPanel(new BorderLayout(5, 5));
+        footer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        JTextField inputField = new JTextField();
+        inputField.setBorder(BorderFactory.createTitledBorder("New Category Name"));
+        JButton addBtn = new JButton("+ Create");
+
+        addBtn.addActionListener(e -> {
+            String newCat = inputField.getText().trim();
+            if (!newCat.isEmpty() && !categories.contains(newCat)) {
+                // Initialize in DB with an empty list so it exists as a key
+                OptionsManager.saveCategoryItems(newCat, new ArrayList<>(List.of("")));
+                categories.add(newCat);
+                inputField.setText("");
+                dataChanged[0] = true;
+                renderCategoryRows(listPanel, categories, dataChanged);
+            }
+        });
+
+        footer.add(inputField, BorderLayout.CENTER);
+        footer.add(addBtn, BorderLayout.EAST);
+
+        dialog.add(new JScrollPane(listPanel), BorderLayout.CENTER);
+        dialog.add(footer, BorderLayout.SOUTH);
+
+        // 3. Update UI on close if changed
+        dialog.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                if (dataChanged[0]) {
+                    onRefresh.run(); // Call the UI update trigger
+                }
+                dialog.dispose();
+            }
+        });
+
+        dialog.setSize(350, 450);
+        dialog.setLocationRelativeTo(parent);
+        dialog.setVisible(true);
+    }
+
+    private static void renderCategoryRows(JPanel panel, List<String> categories, boolean[] dataChanged) {
+        panel.removeAll();
+        for (String cat : categories) {
+            JPanel row = new JPanel(new BorderLayout());
+            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 45));
+            row.setBackground(Color.WHITE);
+            row.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
+
+            JLabel nameLabel = new JLabel("  " + cat);
+            nameLabel.setFont(new Font("SansSerif", Font.PLAIN, 14));
+
+            JButton delBtn = new JButton("\uD83D\uDDD1"); // Trash bin icon
+            delBtn.setForeground(Color.RED);
+            delBtn.setContentAreaFilled(false);
+            delBtn.setBorderPainted(false);
+
+            delBtn.addActionListener(e -> {
+                int confirm = JOptionPane.showConfirmDialog(panel, 
+                    "Delete '" + cat + "' and all its items?", "Confirm Delete", JOptionPane.YES_NO_OPTION);
+                if (confirm == JOptionPane.YES_OPTION) {
+                    // Send empty list to only delete the category
+                    OptionsManager.saveCategoryItems(cat,new ArrayList<>()); 
+                    categories.remove(cat);
+                    dataChanged[0] = true;
+                    renderCategoryRows(panel, categories, dataChanged);
+                }
+            });
+
+            row.add(nameLabel, BorderLayout.CENTER);
+            row.add(delBtn, BorderLayout.EAST);
+            panel.add(row);
+        }
+        panel.revalidate();
+        panel.repaint();
+    }
+
     public static void showEditDialog(String category, JPanel parent) {
 		Window parentWindow = SwingUtilities.getWindowAncestor(parent);
 		JDialog dialog = new JDialog(parentWindow, "Edit " + category, Dialog.ModalityType.APPLICATION_MODAL);
@@ -153,7 +316,7 @@ class HelperFunctions {
 			row.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
 
 			JLabel label = new JLabel("  " + item);
-			JButton removeBtn = new JButton("-");
+			JButton removeBtn = new JButton("\uD83D\uDDD1");
 			removeBtn.setForeground(Color.RED);
 			removeBtn.setBorderPainted(false);
 			removeBtn.setContentAreaFilled(false);
@@ -203,6 +366,135 @@ class CloudDataBaseInfo {
             return false;
         }
     }
+
+    private static String getDatabaseType(Connection conn) throws SQLException {
+    String productName = conn.getMetaData().getDatabaseProductName().toLowerCase();
+    
+    if (productName.contains("postgresql")) return "POSTGRES";
+    if (productName.contains("mysql") || productName.contains("mariadb")) return "MYSQL";
+    if (productName.contains("sqlite")) return "SQLITE";
+    if (productName.contains("microsoft") || productName.contains("sql server")) return "MSSQL";
+    if (productName.contains("oracle")) return "ORACLE";
+    
+    return "UNKNOWN";
+}
+
+    public static void createTables(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
+        createConfigurationTableCloud(JDBC_URL_cloud, USERNAME, PASSWORD);
+        createRecordsDatabaseCloud(JDBC_URL_cloud, USERNAME, PASSWORD);
+    }
+
+    private static void createConfigurationTableCloud(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
+        String confTable = ConfigLoader.config.getProperty("CONFIGURATION_TABLE");
+
+        try (Connection conn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME, PASSWORD);
+            Statement stmt = conn.createStatement()) {
+
+            String dbType = getDatabaseType(conn);
+            String idType, timeFunc, textType;
+
+            // Dialect Mapping
+            switch (dbType) {
+                case "POSTGRES":
+                    idType = "SERIAL PRIMARY KEY";
+                    timeFunc = "TIMESTAMPTZ DEFAULT NOW()";
+                    textType = "TEXT";
+                    break;
+                case "SQLITE":
+                    idType = "INTEGER PRIMARY KEY AUTOINCREMENT";
+                    timeFunc = "DATETIME DEFAULT CURRENT_TIMESTAMP";
+                    textType = "TEXT";
+                    break;
+                case "MSSQL":
+                    idType = "INT IDENTITY(1,1) PRIMARY KEY";
+                    timeFunc = "DATETIME DEFAULT GETDATE()";
+                    textType = "NVARCHAR(MAX)";
+                    break;
+                case "ORACLE":
+                    idType = "NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY";
+                    timeFunc = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
+                    textType = "VARCHAR2(255)";
+                    break;
+                default: // MySQL / MariaDB
+                    idType = "INT AUTO_INCREMENT PRIMARY KEY";
+                    timeFunc = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
+                    textType = "VARCHAR(255)";
+                    break;
+            }
+
+            String sql = String.format(
+                            "CREATE TABLE IF NOT EXISTS %s (" +
+                            " id %s," + 
+                            " category %s NOT NULL," + 
+                            " item_value %s NOT NULL," + 
+                            " created_at %s," + 
+                            " UNIQUE(category, item_value)" + 
+                            ");", 
+                            confTable, idType, textType, textType, timeFunc
+                        );
+
+            stmt.executeUpdate(sql);
+
+            // Sync Local to Cloud 
+            for(String cat: DataPlace.configMap.keySet()) OptionsManager.syncConfiguration(cat, OptionsManager.getCategoryItems(cat));
+            
+        } catch (SQLException e) {
+            System.err.println("\u26A0 CRITICAL: FAILED TO CREATE CLOUD CONFIGURATION TABLE");
+            e.printStackTrace();
+        }
+    }
+
+    private static void createRecordsDatabaseCloud(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
+        String recTable = ConfigLoader.config.getProperty("CLOUD_TABLE");
+
+        try (Connection conn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME, PASSWORD);
+            Statement stmt = conn.createStatement()) {
+            
+            String dbType = getDatabaseType(conn);
+            String textType;
+            String longTextType;
+
+            // Dialect Mapping for Records
+            switch (dbType) {
+                case "POSTGRES":
+                case "SQLITE":
+                    textType = "TEXT";
+                    longTextType = "TEXT";
+                    break;
+                case "MSSQL":
+                    textType = "NVARCHAR(255)";
+                    longTextType = "NVARCHAR(MAX)";
+                    break;
+                case "ORACLE":
+                    textType = "VARCHAR2(255)";
+                    longTextType = "CLOB"; // Use Character Large Object for JSON strings
+                    break;
+                default: // MYSQL / MariaDB
+                    textType = "VARCHAR(255)";
+                    longTextType = "TEXT";
+                    break;
+            }
+
+            String sql = String.format(
+                "CREATE TABLE IF NOT EXISTS %s (" +
+                " session_id %s PRIMARY KEY," + 
+                " login_time %s NOT NULL," + 
+                " logout_time %s NOT NULL," + 
+                " usn %s NOT NULL," +
+                " name %s NOT NULL," +
+                " details %s" +     // This holds all dynamic attributes in jSON String{Subject, dept, sem}
+                ");", 
+                recTable, textType, textType, textType, textType, textType, longTextType
+            );
+
+            stmt.executeUpdate(sql);
+            System.out.println("✓ Cloud Records Table initialized for " + dbType);
+
+        } catch (SQLException e) {
+            System.err.println("\u26A0 CRITICAL: FAILED TO CREATE CLOUD RECORDS TABLE");
+            e.printStackTrace();
+        }
+    }
 }
 
 class ConfigLoader {
@@ -221,15 +513,8 @@ class ConfigLoader {
     private static final String CONFIG_TEMPLATE_NAME = "config.properties";
 
     static {
-        Path k = OptionsManager.PERSISTENT_FILE_PATH; // Called solely to add csv to configuration folder 
-        File persistentConfigFile = CONFIG_FILE_PATH.toFile();
-        
-        // Ensure the application directory exists before checking for the file
-        if (!persistentConfigFile.getParentFile().exists()) {
-            System.out.println("Created Application Folder at " + CONFIG_DIR_PATH);
-            persistentConfigFile.getParentFile().mkdirs();
-        }
-        
+        File persistentConfigFile = CONFIG_FILE_PATH.toFile(); 
+
         System.out.println("Checking for persistent config file");
 
         // --- PHASE 1: Try to read the persistent (user-edited) file ---
@@ -249,7 +534,7 @@ class ConfigLoader {
             try (InputStream templateStream = ConfigLoader.class.getClassLoader().getResourceAsStream(CONFIG_TEMPLATE_NAME)) {
                 
                 if (templateStream == null) {
-                    throw new FileNotFoundException("CRITICAL: Default template file " +  CONFIG_TEMPLATE_NAME + " not found inside the application!");
+                    throw new FileNotFoundException("\u26A0 CRITICAL: Default template file " +  CONFIG_TEMPLATE_NAME + " not found inside the application!");
                 } else {
                     config.load(templateStream);
                     System.out.println("Default configuration loaded successfully.");
@@ -263,6 +548,25 @@ class ConfigLoader {
                 System.err.println("Error reading template or creating new file: " + e.getMessage());
             }
         }
+
+        // ---- PHASE 3: Initialise Database if not exist ---
+        File dbFile = CONFIG_DIR_PATH.resolve(config.getProperty("JDBC_URL_local")).toFile();
+        
+        if (!dbFile.exists()) {
+            System.out.println("First run detected: Initializing Database...");
+
+            // Initialize the SQLite table structure
+            OptionsManager.createConfigurationTableLocal(getLocalDBUrl()); 
+
+            // Use capitalized keys to match your JComboBox headers and JSON extraction logic
+            OptionsManager.saveCategoryItems("Subject", new ArrayList<>(List.of("BXLX101","BXLX102","BXXX3L3","BXXX5L5")));
+            OptionsManager.saveCategoryItems("Department", new ArrayList<>(List.of("CSE","ISE","AIML","DS","ECE","MECH","CIVIL")));
+            OptionsManager.saveCategoryItems("Batch", new ArrayList<>(List.of("I", "II", "III")));
+            OptionsManager.saveCategoryItems("Sem", new ArrayList<>(List.of("1","2","3","4","5","6","7","8")));
+            
+            // Refresh the memory map immediately so the UI is ready
+            DataPlace.configMap = HelperFunctions.loadConfigMap(getLocalDBUrl());
+        } 
     }
 
     /*
@@ -376,87 +680,123 @@ class ConfigLoader {
 
 class OptionsManager {
 
-    // --- Persistence Setup (Safe Location ) ---
-    private static final String OPTIONS_FILE_NAME = "optionsData.csv";
+    public static void createConfigurationTableLocal(String JDBC_URL_local) {
+        String confTable = ConfigLoader.config.getProperty("CONFIGURATION_TABLE");
 
-    // Absolute Path to the persistent, user-editable CSV file
-    public static final Path PERSISTENT_FILE_PATH = ConfigLoader.CONFIG_DIR_PATH.resolve(OPTIONS_FILE_NAME);
-    
-    // Name of the read-only template inside the JAR
-    private static final String OPTIONS_TEMPLATE_NAME = "optionsData.csv";
+        // SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT instead of SERIAL 
+        // SQLite uses DATETIME instead of TIMESTAMP WITH TIME ZONE
+        // SQLite uses CURRENT_TIMESTAMP instead of NOW()
+        String sql = "CREATE TABLE IF NOT EXISTS " + confTable + " (" +
+                    " id INTEGER PRIMARY KEY AUTOINCREMENT," + 
+                    " category TEXT NOT NULL," + 
+                    " item_value TEXT NOT NULL," + 
+                    " created_at DATETIME DEFAULT CURRENT_TIMESTAMP," + 
+                    " UNIQUE(category, item_value)" + 
+                    ");";
 
-    // --- Utility to Load Template and Create Persistent File ---
-    static {
-        File persistentFile = PERSISTENT_FILE_PATH.toFile();
-                
-        // If the persistent file doesn't exist, create the directory and copy the template
-        if (!persistentFile.exists()) {
-            try {
-                // 1. Create directory if necessary
-                if (!persistentFile.getParentFile().exists()) {
-                    persistentFile.getParentFile().mkdirs();
-                }
-
-
-                // 2. Load the template from the JAR
-                try (InputStream templateStream = OptionsManager.class.getClassLoader().getResourceAsStream(OPTIONS_TEMPLATE_NAME)) {
-                    
-                    if (templateStream == null) {
-                        throw new FileNotFoundException("CRITICAL: Default template file " + OPTIONS_TEMPLATE_NAME +" not found inside the application!");                
-                    }
-                    
-                    // 3. Write the template stream to the new persistent file
-                    try (FileOutputStream fos = new FileOutputStream(persistentFile)) {
-                        templateStream.transferTo(fos);
-                    }
-                    System.out.println("New persistent options file created from deafult template.");
-
-                }
-            } catch (IOException e) {
-                System.err.println("CRITICAL: Failed to initialize persistent options file.");
-                e.printStackTrace();
-                JOptionPane.showMessageDialog(null, "Critical error setting up options file. Check logs.", "Setup Error", JOptionPane.ERROR_MESSAGE);
-            }
+        try (Connection conn = DriverManager.getConnection(JDBC_URL_local);
+            Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(sql);
+            System.out.println("✓ Local Configuration Table initialized.");
+        } catch (SQLException e) {
+            System.err.println("\u26A0 CRITICAL: FAILED TO CREATE LOCAL CONFIGURATION TABLE");
+            e.printStackTrace();
         }
     }
 
     /*
-   Update OptionsData
+    Update OptionsData
     */
     public static List<String> getCategoryItems(String category) {
-        Path path = Paths.get(System.getProperty("user.home"), ".DigiLogBook", "optionsData.csv");
-        try {
-            List<String> lines = Files.readAllLines(path);
-            for (String line : lines) {
-                if (line.startsWith(category)) {
-                    String[] parts = line.split(",");
-                    List<String> items = new ArrayList<>();
-                    for (int i = 1; i < parts.length-1; i++) { // skip first element -> category and last element -> OTHERS
-                        String item = parts[i].trim();
-                        if (!item.isEmpty()) {
-                            items.add(item);
-                        }
-                    }
-                    return items;
+        List<String> items = new ArrayList<>();
+        String confTable = ConfigLoader.config.getProperty("CONFIGURATION_TABLE");
+        
+        // Use PreparedStatement to handle the quotes and prevent SQL injection automatically
+        String sql = "SELECT item_value FROM " + confTable + " WHERE category = ?";
+        
+        try (Connection localCon = DriverManager.getConnection(ConfigLoader.getLocalDBUrl());
+            PreparedStatement pstmt = localCon.prepareStatement(sql)) {
+            
+            pstmt.setString(1, category);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    items.add(rs.getString("item_value"));
                 }
             }
-        } catch (IOException e) { e.printStackTrace(); }
-        return new ArrayList<>();
-    }
+        } catch (SQLException e) {
+            System.err.println("Error fetching items for category: " + category);
+            e.printStackTrace();
+        }
+        return items;
+    }    
 
     public static void saveCategoryItems(String category, List<String> items) {
-        Path path = Paths.get(System.getProperty("user.home"), ".DigiLogBook", "optionsData.csv");
-        try {
-            List<String> lines = Files.readAllLines(path);
-            for (int i = 0; i < lines.size(); i++) {
-                if (lines.get(i).startsWith(category)) {
-                    String newLine = category + "," + String.join(",", items) + ",OTHERS...";
-                    lines.set(i, newLine);
-                    break;
-                }
+        String confTable = ConfigLoader.config.getProperty("CONFIGURATION_TABLE");
+        try (Connection localCon = DriverManager.getConnection(ConfigLoader.getLocalDBUrl())) {
+            localCon.setAutoCommit(false);
+
+            // 1. Delete old
+            try (PreparedStatement deleteStmt = localCon.prepareStatement("DELETE FROM " + confTable + " WHERE category = ?")) {
+                deleteStmt.setString(1, category);
+                deleteStmt.executeUpdate();
             }
-            Files.write(path, lines);
-        } catch (IOException e) { e.printStackTrace(); }
+
+            // 2. Insert new
+            try (PreparedStatement localStm = localCon.prepareStatement("INSERT INTO " + confTable + " (category, item_value) VALUES (?, ?)")) {
+                for (String option : items) {
+                    localStm.setString(1, category);
+                    localStm.setString(2, option);
+                    localStm.addBatch();
+                }
+                localStm.executeBatch();
+            }
+            
+            localCon.commit(); // Save local changes
+
+            // 3. Cloud Sync
+            boolean cloudVerified = Boolean.parseBoolean(ConfigLoader.config.getProperty("CLOUD_DB_VERIFIED", "false"));
+            if (cloudVerified) {
+                syncConfiguration(category, items);
+            } else {
+                System.out.println("WARNING: Cloud Config Sync failed");
+            }
+            
+        } catch (SQLException e) {
+            System.err.println("Failed to save category items locally.");
+            e.printStackTrace();
+        }
+
+        // 4. Update configMap
+        DataPlace.configMap = HelperFunctions.loadConfigMap(ConfigLoader.getLocalDBUrl());
+    }
+
+    public static void syncConfiguration(String category, List<String> options) {
+        String JDBC_URL_cloud = ConfigLoader.config.getProperty("JDBC_URL_cloud");
+        String USERNAME_cloud = ConfigLoader.config.getProperty("JDBC_USERNAME_cloud");
+	    String PASSWORD_cloud = ConfigLoader.config.getProperty("JDBC_PASSWORD_cloud");
+        String conf_table = ConfigLoader.config.getProperty("CONFIGURATION_TABLE");
+
+        try(Connection cloudCon = DriverManager.getConnection(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud)) {
+            String deleteSQL = "DELETE FROM " + conf_table + " WHERE category = ?";
+            try (PreparedStatement deleteStmt = cloudCon.prepareStatement(deleteSQL)) {
+                deleteStmt.setString(1, category);
+                deleteStmt.executeUpdate();
+            }
+
+            String insertStmt = "INSERT INTO " + conf_table + " (category,item_value) VALUES (? ,?)";
+            PreparedStatement cloudstm = cloudCon.prepareStatement(insertStmt);
+            cloudstm.setString(1, category);
+            for(String option: options) {
+                cloudstm.setString(2,option);
+                cloudstm.addBatch();
+            }
+            cloudstm.executeBatch();
+            System.out.println("Cloud Sync: " + category + " updated.");
+        } catch (SQLException e) {
+            System.err.println("Cloud Sync Failed for " + category);
+            e.printStackTrace();
+        }
+
     }
 }
 
@@ -468,8 +808,6 @@ class ExportCsvPdf {
     ExportCsvPdf(String type, ArrayList<SessionGroup> selectedGroups) {
 
         if (selectedGroups.size() < 1) {
-            // JOptionPane.showMessageDialog(table, "The table is empty and cannot be
-            // exported.", "Warning", JOptionPane.WARNING_MESSAGE);
             JOptionPane.showMessageDialog(null, "Nothing to export.", "Warning", JOptionPane.WARNING_MESSAGE);
             return;
         }
@@ -504,31 +842,31 @@ class ExportCsvPdf {
         }
 
         try (PrintWriter pw = new PrintWriter(new FileWriter(fileToSave))) {
-            // Define headers. Assuming the same columns as your JTable
-            String[] headers = new String[] { "Login Time", "USN", "Name", "Sem", "Dept", "Subject", "Batch",
-                    "Logout Time", "Session ID" };
-
-            // Write the main header row
-            for (int i = 0; i < headers.length; i++) {
-                pw.print(headers[i]);
-                if (i < headers.length - 1)
-                    pw.print(",");
+            // Define headers. 
+            pw.print("Login Time,USN,Name,");
+            for (String category : DataPlace.configMap.keySet()) {
+                pw.print(category + ",");
             }
-            pw.println();
+            pw.println("Logout Time,Session ID");
 
             for (SessionGroup group : selectedGroups) {
                 // Add a line to separate groups
                 // pw.println("------------------------- Group:  -------------------------");
 
                 // Write the records for the current group
+
                 for (SessionRecord record : group.records) {
                     pw.print(record.getLoginTime() + ",");
                     pw.print(record.getUsn() + ",");
                     pw.print(record.getName() + ",");
-                    pw.print(record.getSem() + ",");
-                    pw.print(record.getDept() + ",");
-                    pw.print(record.getSub() + ",");
-                    pw.print(record.getBatch() + ",");
+
+                    // Dynamic Categories (Subjects, Departments, etc.)
+                    for (String category : DataPlace.configMap.keySet()) {
+                        // Get value from map, use empty string if not found to keep CSV columns aligned
+                        String val = record.attributes.getOrDefault(category, "");
+                        pw.print(val + ",");
+                    }
+
                     pw.print(record.getLogoutTime() + ",");
                     pw.print(record.getSessionId());
                     pw.println();
@@ -568,14 +906,7 @@ class ExportCsvPdf {
                 int yPosition = 800; // Increased to give more room at the top
                 int margin = 50;
                 int cellHeight = 20;
-
-                // --- FIXED COLUMN COUNT ---
-                // 8 columns: Login Time, USN, Name, Sem, Dept, Subject, Batch, Logout Time
-                int colCount = 8;
-
                 int pageWidth = (int) page.getMediaBox().getWidth();
-                // The column widths calculation now uses the fixed count (8)
-                int[] columnWidths = calculateColumnWidths(colCount, pageWidth - 2 * margin);
 
                 // --- Draw Group Heading --
 
@@ -659,7 +990,7 @@ class ExportCsvPdf {
                 contentStream.setFont(BOLD_FONT, PRIORITY_FONT_SIZE);
                 contentStream.setNonStrokingColor(Color.BLACK);
                 contentStream.newLineAtOffset(textX+(w2-w1)/2, textY1); //Text Centering 
-                contentStream.showText("Subject: " + group.sub);
+                contentStream.showText("Subject: " + group.attributes.getOrDefault("Subjects", "-"));
                 contentStream.endText();
 
                 // === Column 3: Dept ===
@@ -668,7 +999,7 @@ class ExportCsvPdf {
                 contentStream.setFont(BOLD_FONT, PRIORITY_FONT_SIZE);
                 contentStream.setNonStrokingColor(Color.BLACK);
                 contentStream.newLineAtOffset(textX, textY1);
-                contentStream.showText("Dept: " + group.dept);
+                contentStream.showText("Dept: " + group.attributes.getOrDefault("Departments", "-"));
                 contentStream.endText();
 
                 // 4. Draw Text (Row 2: Slot | Sem | Batch) - SECONDARY PRIORITY
@@ -698,7 +1029,7 @@ class ExportCsvPdf {
                 contentStream.setFont(BOLD_FONT, SECONDARY_FONT_SIZE);
                 contentStream.setNonStrokingColor(Color.DARK_GRAY);
                 contentStream.newLineAtOffset(textX + HEADING_PADDING, textY2);
-                contentStream.showText("Sem: " + group.sem);
+                contentStream.showText("Sem: " + group.attributes.getOrDefault("Semester", "-"));
                 contentStream.endText();
 
                 // === Column 6: Batch ===
@@ -707,7 +1038,7 @@ class ExportCsvPdf {
                 contentStream.setFont(BOLD_FONT, SECONDARY_FONT_SIZE);
                 contentStream.setNonStrokingColor(Color.DARK_GRAY);
                 contentStream.newLineAtOffset(textX + HEADING_PADDING, textY2);
-                contentStream.showText("Batch: " + group.batch);
+                contentStream.showText("Batch: " + group.attributes.getOrDefault("Batches", "-"));
                 contentStream.endText();
 
                 // 5. Update yPosition to start the table below the heading box
@@ -718,19 +1049,50 @@ class ExportCsvPdf {
                 contentStream.setNonStrokingColor(Color.BLACK);
 
                 // --- Draw Table Headers for the Group ---
-                String[] headers = new String[] { "Login Time", "USN", "Name", "Sem", "Dept", "Subject", "Batch",
-                        "Logout Time" };
+                List<String> headerList = new ArrayList<>();
+                headerList.add("Login Time");
+                headerList.add("USN");
+                headerList.add("Name");
+
+                // Add dynamic categories (Sem, Dept, etc.)
+                for (String category : DataPlace.configMap.keySet()) {
+                    headerList.add(category);
+                }
+
+                headerList.add("Logout Time");
+
+                // HEADERS
+                String[] headers = headerList.toArray(new String[0]);
+
+                // Dynamic Width allocation to columns 
+                float availableWidth = page.getMediaBox().getWidth() - (2 * margin);
+                float[] columnWidths = new float[headers.length];
+                for (int i = 0; i < headers.length; i++) {
+                    columnWidths[i] = availableWidth / headers.length; // Simple equal distribution
+                }
+                
                 drawRow(contentStream, yPosition, margin, columnWidths, cellHeight, headers,
                         new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), Color.GRAY);
                 yPosition -= cellHeight;
 
                 // --- Draw Group's Records ---
                 for (SessionRecord record : group.records) {
-                    String[] rowData = new String[] {
-                            record.getLoginTime().toLocalTime().toString(), record.getUsn(), record.getName(),
-                            record.getSem(), record.getDept(), record.getSub(),
-                            record.getBatch(), record.getLogoutTime().toLocalTime().toString()
-                    };
+                    List<String> rowList = new ArrayList<>();
+    
+                    // Standard fields
+                    rowList.add(record.getLoginTime().toLocalTime().toString()); 
+                    rowList.add(record.getUsn());
+                    rowList.add(record.getName());
+
+                    // Dynamic attributes matching the header order
+                    for (String category : DataPlace.configMap.keySet()) {
+                        rowList.add(record.attributes.getOrDefault(category, "-"));
+                    }
+
+                    rowList.add(record.getLogoutTime().toLocalTime().toString());
+
+                    String[] rowData = rowList.toArray(new String[0]);
+
                     drawRow(contentStream, yPosition, margin, columnWidths, cellHeight, rowData,
                             new PDType1Font(Standard14Fonts.FontName.HELVETICA), Color.BLACK);
                     yPosition -= cellHeight;
@@ -766,7 +1128,7 @@ class ExportCsvPdf {
         }
     }
 
-    private static void drawRow(PDPageContentStream contentStream, int y, int margin, int[] columnWidths, int height,
+    private static void drawRow(PDPageContentStream contentStream, int y, int margin, float[] columnWidths, int height,
             String[] cells, PDType1Font font, Color textColor) throws IOException {
         contentStream.setStrokingColor(Color.BLACK);
         float nextX = margin;
