@@ -164,7 +164,7 @@ Login Time,USN,Name,Sem,Dept,Subject,Batch, ... , Logout Time,Session ID
 ### 5️⃣ **Manage Configuration Tables**
 This section allows you to customize the organizational structure of the logbook without touching the code:
 
-* **Dynamic Categories**: Navigate to `Settings` → **Configuration Details** tab. Use the **"+ Add / Remove Categories"** button to create new structural keys like "Lab Assistant," "Room No," or "System ID."
+* **Dynamic Categories**: Navigate to `⚙️ Settings` → **"Configuration Details"** tab. Use the **"+ Add / Remove Categories"** button to create new structural keys like "Lab Assistant," "Room No," or "System ID."
 * **Reference Items**: Within each category, use the **"Manage [Category]"** dialog to search, add, or delete specific selectable values (e.g., adding a new Subject Code like `BXLX101`).
 * **Instant Sync**: Saving these changes triggers a real-time UI refresh, ensuring all dropdowns and filters throughout the app are updated immediately.
 
@@ -228,6 +228,9 @@ testing.skip.delete=false
 
 ### Settings Dialog
 <div align="center">
+<img src="images/screenshot-settings-configurations.png" alt="Settings - Configuration" width="600"/>
+<p><i>Dynamic Schema & Category Management Interface</i></p>
+
 <img src="images/screenshot-settings-AD_disable.png" alt="Settings - Disabled" width="600"/>
 <p><i>Auto Save/Delete disabled state</i></p>
 
@@ -264,7 +267,7 @@ DigiLogBook/
 ### Database Schema (Universal)
 The system now uses a dynamic schema that adapts its data types to the connected database:
 
-**Table: CONFIGURATION_TABLE**
+**Table: configurationOptions**
 | Column | Type | Description |
 |--------|------|-------------|
 | id | Primary Key | Auto-incremented (Dialect specific) |
