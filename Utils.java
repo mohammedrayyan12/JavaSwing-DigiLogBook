@@ -381,7 +381,7 @@ class CloudDataBaseInfo {
 
     public static void createTables(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
         createConfigurationTableCloud(JDBC_URL_cloud, USERNAME, PASSWORD);
-        createRecordsDatabaseCloud(JDBC_URL_cloud, USERNAME, PASSWORD);
+        createRecordsTableCloud(JDBC_URL_cloud, USERNAME, PASSWORD);
     }
 
     private static void createConfigurationTableCloud(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
@@ -444,7 +444,7 @@ class CloudDataBaseInfo {
         }
     }
 
-    private static void createRecordsDatabaseCloud(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
+    private static void createRecordsTableCloud(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
         String recTable = ConfigLoader.config.getProperty("CLOUD_TABLE");
 
         try (Connection conn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME, PASSWORD);
@@ -700,6 +700,33 @@ class OptionsManager {
             System.out.println("✓ Local Configuration Table initialized.");
         } catch (SQLException e) {
             System.err.println("\u26A0 CRITICAL: FAILED TO CREATE LOCAL CONFIGURATION TABLE");
+            e.printStackTrace();
+        }
+    }
+
+    public static void createRecordsTableLocal(Connection localConn) {
+        String localTable = ConfigLoader.config.getProperty("LOCAL_TABLE");
+        try (Statement stmt = localConn.createStatement()) {
+            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS " + localTable + " (" +
+                    "session_id TEXT PRIMARY KEY, " +
+                    "login_time TEXT, " +
+                    "logout_time TEXT, " +
+                    "usn TEXT, " +
+                    "name TEXT, " +
+                    "details TEXT" + // JSON stored as TEXT in SQLite
+                    ");");
+
+            // 2. Add the Index for each category (Fast seaching => Binary Search)
+            for (String category : DataPlace.configMap.keySet()) {
+                // unique name for each index
+                String indexName = "idx_details_" + category;
+                
+                String indexSql = "CREATE INDEX IF NOT EXISTS " + indexName + 
+                                " ON " + localTable + " (json_extract(details, '$." + category + "'));";
+                
+                stmt.executeUpdate(indexSql);
+            }
+        } catch (SQLException e) {
             e.printStackTrace();
         }
     }

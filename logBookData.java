@@ -70,29 +70,9 @@ class DataPlace {
 		try (Connection cloudConn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud);
 			Connection localConn = DriverManager.getConnection(JDBC_URL_local)) {
 
-			// 1. Setup local table to match cloud structure
-			try (Statement stmt = localConn.createStatement()) {
-				stmt.executeUpdate("CREATE TABLE IF NOT EXISTS " + localTable + " (" +
-						"session_id TEXT PRIMARY KEY, " +
-						"login_time TEXT, " +
-						"logout_time TEXT, " +
-						"usn TEXT, " +
-						"name TEXT, " +
-						"details TEXT" + // JSON stored as TEXT in SQLite
-						");");
-
-				// 2. Add the Index for each category (Fast seaching => Binary Search)
-				for (String category : configMap.keySet()) {
-					// unique name for each index
-					String indexName = "idx_details_" + category;
-					
-					String indexSql = "CREATE INDEX IF NOT EXISTS " + indexName + 
-									" ON " + localTable + " (json_extract(details, '$." + category + "'));";
-					
-					stmt.executeUpdate(indexSql);
-				}
-			}
-		
+			// 1. Setup local table if not exist to match cloud structure
+			OptionsManager.createRecordsTableLocal(localConn);
+	
 
 			// 2. Fetch all from Cloud
 			String selectSql = "SELECT session_id, login_time, logout_time, usn, details FROM " + cloudTable;
@@ -400,8 +380,6 @@ class DataPlace {
             System.out.println("Settings button clicked!");
 
             JDialog settingsDialog = new JDialog(jf, "Settings", true);
-            settingsDialog.setMinimumSize(new Dimension(300,180));; 
-            settingsDialog.setLocationRelativeTo(jf);
 
 			Callable<JPanel> CloudDBConfig = () -> {
 				// main panel with padding
@@ -875,7 +853,28 @@ class DataPlace {
 
 			};
 			
-			JTabbedPane ooptions = new JTabbedPane();
+			JTabbedPane ooptions = new JTabbedPane() {
+				@Override
+				public Dimension getPreferredSize() {
+					Component selected = getSelectedComponent();
+					if (selected != null) {
+						Dimension d = selected.getPreferredSize();
+						int tabHeaderHeight = getUI().getTabRunCount(this) * 32; // Approx header height
+						
+						// Calculate required size based on content + headers
+						int reqWidth = d.width + 20; 
+						int reqHeight = d.height + tabHeaderHeight;
+
+						// Return the LARGER of (Required Size) vs (Minimum Size)
+						return new Dimension(
+							Math.max(reqWidth, 400), 
+							Math.max(reqHeight, 180)
+						);
+					}
+					return super.getPreferredSize();
+				}
+			};
+
 
 			try {
 				ooptions.addTab("Configuration Details", ConfigurationFolder.call());
@@ -886,7 +885,9 @@ class DataPlace {
 				e1.printStackTrace();
 			}
 			ooptions.addChangeListener(ee -> {
+				settingsDialog.revalidate();
 				settingsDialog.pack();
+				settingsDialog.setLocationRelativeTo(jf);
 			});
 
 			Object target = settingsButton.getClientProperty("targetTab");
@@ -899,7 +900,11 @@ class DataPlace {
 			// Add main panel to the center of the settings dialog
             settingsDialog.add(ooptions, BorderLayout.CENTER); 
 
-			settingsDialog.pack();
+			// Trigger ChangeListener for first time 
+			ooptions.setSelectedIndex(1);
+			ooptions.setSelectedIndex(0);
+
+
             settingsDialog.setVisible(true);
         });
 
