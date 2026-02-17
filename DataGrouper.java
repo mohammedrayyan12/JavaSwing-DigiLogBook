@@ -138,7 +138,14 @@ class SessionGrouper {
 
         String from = start.toString() + " - ";
         String to = "16:00";
-        if (!start.isBefore(LocalTime.of(13, 30, 0)) && !start.isAfter(LocalTime.of(14, 20, 0)))
+
+        if (!start.isBefore(LocalTime.of(16, 0, 0)))
+            from = "16:00 - ";
+        else if (!start.isBefore(LocalTime.of(15, 10, 0)) && !start.isAfter(LocalTime.of(16, 0, 0)))
+            from = "15:10 - ";
+        else if (!start.isBefore(LocalTime.of(14,20,0)) && !start.isAfter(LocalTime.of(15, 10, 0)))
+            from = "14:20 - ";
+        else if (!start.isBefore(LocalTime.of(13, 30, 0)) && !start.isAfter(LocalTime.of(14, 20, 0)))
             from = "13:30 - ";
         else if (!start.isBefore(LocalTime.of(12, 05, 0)) && !start.isAfter(LocalTime.of(12, 55, 0)))
             from = "12:05 - ";
@@ -153,17 +160,21 @@ class SessionGrouper {
 
         if (end == null)
             to = "Ongoing";
-        else if (!end.isBefore(LocalTime.of(14, 20, 0)))
+        else if (!end.isBefore(LocalTime.of(15, 20, 0)) && !end.isAfter(LocalTime.of(16, 10, 0)))
+            to = "16:00";
+        else if (!end.isBefore(LocalTime.of(14, 30, 0)) && !end.isAfter(LocalTime.of(15, 20, 0)))
+            to = "15:10";
+        else if (!end.isBefore(LocalTime.of(13, 30, 0)) && !end.isAfter(LocalTime.of(14, 30, 0)))
             to = "14:20";
-        else if (!end.isBefore(LocalTime.of(12, 05, 0)) && !end.isAfter(LocalTime.of(12, 55, 0)))
+        else if (!end.isBefore(LocalTime.of(12, 15, 0)) && !end.isAfter(LocalTime.of(13, 30, 0)))
             to = "12:55";
-        else if (!end.isBefore(LocalTime.of(11, 15, 0)) && !end.isAfter(LocalTime.of(12, 05, 0)))
+        else if (!end.isBefore(LocalTime.of(11, 15, 0)) && !end.isAfter(LocalTime.of(12, 15, 0)))
             to = "12:05";
-        else if (!end.isBefore(LocalTime.of(10, 10, 0)) && !end.isAfter(LocalTime.of(11, 0, 0)))
+        else if (!end.isBefore(LocalTime.of(10, 20, 0)) && !end.isAfter(LocalTime.of(11, 15, 0)))
             to = "11:00";
-        else if (!end.isBefore(LocalTime.of(9, 20, 0)) && !end.isAfter(LocalTime.of(10, 10, 0)))
+        else if (!end.isBefore(LocalTime.of(9, 30, 0)) && !end.isAfter(LocalTime.of(10, 20, 0)))
             to = "10:10";
-        else if (!end.isBefore(LocalTime.of(8, 30, 0)) && !end.isAfter(LocalTime.of(9, 20, 0)))
+        else if (!end.isBefore(LocalTime.of(8, 30, 0)) && !end.isAfter(LocalTime.of(9, 30, 0)))
             to = "09:20";
 
         return from + to;
