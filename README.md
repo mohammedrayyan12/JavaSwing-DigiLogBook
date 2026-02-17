@@ -112,10 +112,10 @@ git clone https://github.com/mohammedrayyan12/JavaSwing-DigiLogBook.git
 cd JavaSwing-DigiLogBook
 
 # Compile with dependencies
-javac -cp ./lib/pdfbox-app-3.0.5.jar:./lib/sqlite-jdbc-3.50.3.0.jar:./lib/mysql-connector-j-9.3.0.jar:. *.java
+javac -cp ./lib/pdfbox-app-3.0.5.jar:./lib/sqlite-jdbc-3.50.3.0.jar:./lib/postgresql-42.7.5.jar:. *.java
 
 # Run the application
-java -cp ./lib/mysql-connector-j-9.3.0.jar:./lib/pdfbox-app-3.0.5.jar:./lib/sqlite-jdbc-3.50.3.0.jar:. logBookData
+java -cp ./lib/postgresql-42.7.5.jar:./lib/pdfbox-app-3.0.5.jar:./lib/sqlite-jdbc-3.50.3.0.jar:. logBookData
 ```
 
 ### 📦 Dependencies
@@ -259,6 +259,7 @@ DigiLogBook/
 ├── autoDelete.java           # Scheduled cleanup tasks
 ├── lib/                      # External libraries
 │   ├── sqlite-jdbc-3.50.3.0.jar
+│   ├── postgresql-42.7.5.jar
 │   ├── mysql-connector-j-9.3.0.jar
 │   └── pdfbox-app-3.0.5.jar
 └── config.properties         # Application configuration
@@ -289,13 +290,22 @@ The system now uses a dynamic schema that adapts its data types to the connected
 
 ## 🛠️ Development
 
-### Building the Project
+This project uses **Gradle** for dependency management and build automation. You do not need to install Gradle manually; the included Wrapper handles everything.
+
+### Building the Project 
+- Manually
 ```bash
 # Compile all Java files
-javac -cp ./lib/pdfbox-app-3.0.5.jar:./lib/sqlite-jdbc-3.50.3.0.jar:./lib/mysql-connector-j-9.3.0.jar:. *.java
+javac -cp ./lib/pdfbox-app-3.0.5.jar:./lib/sqlite-jdbc-3.50.3.0.jar:./lib/postgresql-42.7.5.jar:. *.java
 
 # Run with all dependencies
-java -cp ./lib/mysql-connector-j-9.3.0.jar:./lib/pdfbox-app-3.0.5.jar:./lib/sqlite-jdbc-3.50.3.0.jar:. logBookData
+java -cp ./lib/postgresql-42.7.5.jar:./lib/pdfbox-app-3.0.5.jar:./lib/sqlite-jdbc-3.50.3.0.jar:. logBookData
+JavaSwing-DigiLogBook/lib/postgresql-42.7.5.jar
+```
+- Alternatively
+ ```bash
+# Run the application directly from source
+java -jar build/libs/JavaSwing-DigiLogBook-all.jar
 ```
 
 ### Testing Mode
@@ -306,15 +316,13 @@ testing.skip.delete=true
 ```
 
 ### Creating Executable JAR
-```bash
-# Create JAR with dependencies
-jar cvfm DigiLogBook.jar manifest.txt *.class lib/
-```
 
-**manifest.txt:**
-```
-Main-Class: logBookData
-Class-Path: lib/sqlite-jdbc-3.50.3.0.jar lib/mysql-connector-j-9.3.0.jar lib/pdfbox-app-3.0.5.jar
+```bash
+# 1. Build the executable Fat JAR (includes all dependencies)
+./gradlew shadowJar
+
+# 2. Run the application
+java -jar build/libs/JavaSwing-DigiLogBook-all.jar
 ```
 
 ---
