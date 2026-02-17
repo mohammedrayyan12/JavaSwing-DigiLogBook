@@ -75,7 +75,7 @@ class DataPlace {
 	
 
 			// 2. Fetch all from Cloud
-			String selectSql = "SELECT session_id, login_time, logout_time, usn, details FROM " + cloudTable;
+			String selectSql = "SELECT session_id, login_time, logout_time, name, usn, details FROM " + cloudTable;
 			
 			localConn.setAutoCommit(false);
 			String insertSql = "INSERT OR REPLACE INTO " + localTable + 
@@ -889,13 +889,6 @@ class DataPlace {
 				settingsDialog.pack();
 				settingsDialog.setLocationRelativeTo(jf);
 			});
-
-			Object target = settingsButton.getClientProperty("targetTab");
-			if (target instanceof Integer) {
-				ooptions.setSelectedIndex((Integer) target);
-				// Clear the property so it doesn't open that tab every time thereafter
-				settingsButton.putClientProperty("targetTab", null);
-			}
 			
 			// Add main panel to the center of the settings dialog
             settingsDialog.add(ooptions, BorderLayout.CENTER); 
@@ -904,6 +897,12 @@ class DataPlace {
 			ooptions.setSelectedIndex(1);
 			ooptions.setSelectedIndex(0);
 
+			Object target = settingsButton.getClientProperty("targetTab");
+			if (target instanceof Integer) {
+				ooptions.setSelectedIndex((Integer) target);
+				// Clear the property so it doesn't open that tab every time thereafter
+				settingsButton.putClientProperty("targetTab", null);
+			}
 
             settingsDialog.setVisible(true);
         });
