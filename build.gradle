@@ -18,10 +18,17 @@ sourceSets {
     main {
         java {
             srcDirs = ['.']
+            include '**/*.java' 
         }
         resources {
             srcDirs = ['.']
-            include 'config.properties'
+            include '**/*.properties'
+            include '**/*.png' 
+            
+            // Exclude everything else so it doesn't clash with Java
+            exclude '**/*.java'
+            exclude 'build/**'
+            exclude '.gradle/**'
         }
     }
 }
