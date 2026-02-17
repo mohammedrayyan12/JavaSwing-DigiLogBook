@@ -479,7 +479,7 @@ class CloudDataBaseInfo {
                 "CREATE TABLE IF NOT EXISTS %s (" +
                 " session_id %s PRIMARY KEY," + 
                 " login_time %s NOT NULL," + 
-                " logout_time %s NOT NULL," + 
+                " logout_time %s," + 
                 " usn %s NOT NULL," +
                 " name %s NOT NULL," +
                 " details %s" +     // This holds all dynamic attributes in jSON String{Subject, dept, sem}
