@@ -560,8 +560,8 @@ class ConfigLoader {
 
             // Use capitalized keys to match your JComboBox headers and JSON extraction logic
             OptionsManager.saveCategoryItems("Subject", new ArrayList<>(List.of("BXLX101","BXLX102","BXXX3L3","BXXX5L5")));
-            OptionsManager.saveCategoryItems("Department", new ArrayList<>(List.of("CSE","ISE","AIML","DS","ECE","MECH","CIVIL")));
-            OptionsManager.saveCategoryItems("Batch", new ArrayList<>(List.of("I", "II", "III")));
+            OptionsManager.saveCategoryItems("Department", new ArrayList<>(List.of("CSE (cs)","ISE (is)","AIML (ai)","DS (cd)","ECE (ec)","MECH (me)","CIVIL (cv)")));
+            OptionsManager.saveCategoryItems("Batch", new ArrayList<>(List.of("I", "II")));
             OptionsManager.saveCategoryItems("Sem", new ArrayList<>(List.of("1","2","3","4","5","6","7","8")));
             
             // Refresh the memory map immediately so the UI is ready
