@@ -136,7 +136,7 @@ class SessionGrouper {
         LocalTime start = starts.toLocalTime();
         LocalTime end = (ends == null) ? null : ends.toLocalTime();
 
-        String from = start.toString() + " - ";
+        String from = "08:30 - ";
         String to = "16:00";
 
         if (!start.isBefore(LocalTime.of(16, 0, 0)))
