@@ -23,14 +23,18 @@ sourceSets {
         resources {
             srcDirs = ['.']
             include '**/*.properties'
-            include '**/*.png' 
             
             // Exclude everything else so it doesn't clash with Java
             exclude '**/*.java'
             exclude 'build/**'
             exclude '.gradle/**'
+            exclude 'gradle/**'
         }
     }
+}
+
+tasks.named('compileJava') {
+    mustRunAfter tasks.named('processResources')
 }
 
 shadowJar {
