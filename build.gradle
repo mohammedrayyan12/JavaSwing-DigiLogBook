@@ -15,29 +15,6 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.10.1'
 }
 
-sourceSets {
-    main {
-        java {
-            srcDirs = ['.']
-            include '**/*.java' 
-        }
-        resources {
-            srcDirs = ['.']
-            include '**/*.properties'
-            
-            // Exclude everything else so it doesn't clash with Java
-            exclude '**/*.java'
-            exclude 'build/**'
-            exclude '.gradle/**'
-            exclude 'gradle/**'
-        }
-    }
-}
-
-tasks.named('compileJava') {
-    mustRunAfter tasks.named('processResources')
-}
-
 shadowJar {
     archiveBaseName.set('JavaSwing-DigiLogBook')
     manifest {
