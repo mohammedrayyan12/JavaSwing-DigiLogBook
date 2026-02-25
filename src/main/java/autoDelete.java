@@ -183,45 +183,37 @@ class autoDelete {
             return; 
         }
 
-        String deleteQuery = "Delete from " + ConfigLoader.config.getProperty("CLOUD_TABLE"); 
+        // Sync Databases 
+        boolean syncSuccessful = DataPlace.syncDatabases();
 
-        try(
-            Connection conn = DriverManager.getConnection(
-                ConfigLoader.config.getProperty("JDBC_URL_cloud"),
-                ConfigLoader.config.getProperty("JDBC_USERNAME_cloud"),
-                ConfigLoader.config.getProperty("JDBC_PASSWORD_cloud")
-                );
-            PreparedStatement deleteStatement = conn.prepareStatement(deleteQuery);
-            ) {
-
-            // Sync Databases 
-            DataPlace.syncDatabases();
-
-            boolean skipDelete = Boolean.parseBoolean(
-                ConfigLoader.config.getProperty("testing.skip.delete", "false")
-            );
-            
-            if (skipDelete) {
-                System.out.println("\u26A0 TESTING MODE: Skipping cloud delete operation");
-                System.out.println("   (Set testing.skip.delete=false to enable deletion)");
-            } else {
-                if (lastRun != null) { // Don't delete on first run
-                    int deletedRows = deleteStatement.executeUpdate();
-                    System.out.println("✓ Deleted " + deletedRows + " records from CLOUD DB");
-                }
-            }
-            //delete the DB ( UNCOMMENT WHILE RUNNING ) // does the same as above else statement
-            // if (lastRun != null) deleteStatement.executeUpdate();  //condition for not deleting DB the first time application runs
-
-            // Record it in config file
-            ConfigLoader.setCloudLastRunDateToNow();
-
-            System.out.println("Cloud DB auto-delete and sync complete.");
-
-        } catch (SQLException| IOException e) {
-            e.printStackTrace();
-            System.out.println("Failed to Auto Delete and Sync Cloud DB");
+        if (!syncSuccessful) {
+            System.err.println("CRITICAL: Cloud Sync failed. Aborting auto-delete to prevent data loss.");
+            return; // Exit early! Do not delete and do not update the last run date.
         }
+
+        boolean skipDelete = Boolean.parseBoolean(
+            ConfigLoader.config.getProperty("testing.skip.delete", "false")
+        );
+        
+        if (skipDelete) {
+            System.out.println("\u26A0 TESTING MODE: Skipping cloud delete operation");
+            System.out.println("   (Set testing.skip.delete=false to enable deletion)");
+        } else {
+            if (lastRun != null ) { // Don't delete on first run
+                CloudAPI.callEdgeFunction("delete-records","{}");
+                System.out.println("✓ Cloud Records Cleared.");
+            }
+        }
+        
+        // Record it in config file
+        try {
+            ConfigLoader.setCloudLastRunDateToNow();
+            System.out.println("✓ Cloud Maintenance Timestamp Updated.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Cloud DB auto-delete and sync complete.");
     }
 
     public static void scheduleAutoDeleteTask() {

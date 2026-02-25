@@ -12,6 +12,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
+import java.net.URI;
+import java.net.http.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -42,7 +44,12 @@ import javax.swing.event.DocumentListener;
 
 import javax.swing.*;
 
+// JSON parsing
+import com.google.gson.Gson;
+import java.lang.reflect.Type;
+import com.google.gson.reflect.TypeToken;
 
+// PDF Export 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -59,7 +66,7 @@ class HelperFunctions {
 		
 		try (Connection conn = DriverManager.getConnection(JDBC_URL_local);
 			Statement stmt = conn.createStatement();
-			ResultSet rs = stmt.executeQuery("SELECT category, item_value FROM " + confTable + " ORDER BY category, id")) {
+			ResultSet rs = stmt.executeQuery("SELECT category, item_value FROM " + confTable + " ORDER BY category, item_value")) {
 
 			while (rs.next()) {
 				String category = rs.getString("category");
@@ -68,7 +75,7 @@ class HelperFunctions {
 				// If it's a new category, initialize the list with the category name as the first item (Header)
 				map.computeIfAbsent(category, k -> {
 					List<String> list = new ArrayList<>();
-					list.add(k); // e.g., First item is "Subjects"
+					list.add(k);
 					return list;
 				});
 				
@@ -81,6 +88,51 @@ class HelperFunctions {
 		return map;
 	}
 
+    public static void performSyncWithProgress(Window parent, Runnable syncTask, Runnable onComplete) {
+        JDialog syncDialog = new JDialog(parent, "Data Sync", Dialog.ModalityType.APPLICATION_MODAL);
+        syncDialog.setUndecorated(true);
+        
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createLineBorder(Color.GRAY, 2));
+        
+        JLabel label = new JLabel("🔄 Syncing with Cloud... Please wait.", JLabel.CENTER);
+        JProgressBar progressBar = new JProgressBar();
+        progressBar.setIndeterminate(true); // Spinning effect
+        
+        panel.add(label, BorderLayout.NORTH);
+        panel.add(progressBar, BorderLayout.CENTER);
+        panel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        
+        syncDialog.add(panel);
+        syncDialog.pack();
+        syncDialog.setLocationRelativeTo(parent);
+
+        // Start the background thread
+        new Thread(() -> {
+            try {
+                syncTask.run();  
+            } finally {
+                SwingUtilities.invokeLater(() -> {
+                    syncDialog.dispose();
+                    onComplete.run(); // when background thread finishes 
+                });
+            }
+        }).start();
+
+        // Show the dialog until background thread is running to avoid user interaction 
+        syncDialog.setVisible(true);
+    }
+
+    public static void showSyncStatusDialog(String message, int messageType) {
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            javax.swing.JOptionPane.showMessageDialog(
+                null, 
+                message, 
+                "Sync Status", 
+                messageType
+            );
+        });
+    }
 
     public static Map<String, String> getCurrentFilters() {
         Map<String, String> filters = new HashMap<>();
@@ -140,11 +192,13 @@ class HelperFunctions {
             String newCat = inputField.getText().trim();
             if (!newCat.isEmpty() && !categories.contains(newCat)) {
                 // Initialize in DB with an empty list so it exists as a key
-                OptionsManager.saveCategoryItems(newCat, new ArrayList<>(List.of("")));
                 categories.add(newCat);
-                inputField.setText("");
                 dataChanged[0] = true;
+                inputField.setText("");
                 renderCategoryRows(listPanel, categories, dataChanged);
+                new Thread(() -> {
+                    OptionsManager.saveCategoryItems(newCat, new ArrayList<>(List.of("")), new ArrayList<>());
+                }).start();
             }
         });
 
@@ -190,8 +244,7 @@ class HelperFunctions {
                 int confirm = JOptionPane.showConfirmDialog(panel, 
                     "Delete '" + cat + "' and all its items?", "Confirm Delete", JOptionPane.YES_NO_OPTION);
                 if (confirm == JOptionPane.YES_OPTION) {
-                    // Send empty list to only delete the category
-                    OptionsManager.saveCategoryItems(cat,new ArrayList<>()); 
+                    OptionsManager.saveCategoryItems(cat,new ArrayList<>(),DataPlace.configMap.get(cat));
                     categories.remove(cat);
                     dataChanged[0] = true;
                     renderCategoryRows(panel, categories, dataChanged);
@@ -206,37 +259,76 @@ class HelperFunctions {
         panel.repaint();
     }
 
+    public static void addItemtoConfigurationUI(JPanel listPanel, String val,String filter, boolean[] isChanged, 
+        List<String> localItems,List<String> itemsToAdd,List<String> itemsToDelete) {
+
+        // Add element to UI
+        JPanel row = new JPanel(new BorderLayout());
+        row.setBackground(Color.WHITE);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        row.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
+
+        JLabel label = new JLabel("  " + val);
+        boolean matches = label.getText().trim().toLowerCase().contains(filter.toLowerCase()); // to match filter while adding 
+        JButton removeBtn = new JButton("\uD83D\uDDD1"); // Trash can icon
+        removeBtn.setForeground(Color.RED);
+        removeBtn.setBorderPainted(false);
+        removeBtn.setContentAreaFilled(false);
+
+        removeBtn.addActionListener(ee -> {
+            localItems.remove(val);
+            
+            if (!itemsToAdd.remove(val)) {
+                itemsToDelete.add(val);
+            }
+            
+            isChanged[0] = true;  // Mark as changed
+
+            listPanel.remove(row);
+            listPanel.revalidate();
+            listPanel.repaint();
+        });
+        row.add(label, BorderLayout.CENTER);
+        row.add(removeBtn, BorderLayout.EAST);
+        row.setVisible(matches); // set visibility to current filter
+
+        listPanel.add(row);
+        listPanel.revalidate();
+        listPanel.repaint();
+    }
+
     public static void showEditDialog(String category, JPanel parent) {
 		Window parentWindow = SwingUtilities.getWindowAncestor(parent);
 		JDialog dialog = new JDialog(parentWindow, "Edit " + category, Dialog.ModalityType.APPLICATION_MODAL);
 		dialog.setLayout(new BorderLayout());
 
-		// 1. Load initial data into a local list
+        // Keep track of added and deleted items 
+        List<String> itemsToAdd = new ArrayList<>();
+        List<String> itemsToDelete = new ArrayList<>();
+
 		List<String> localItems = OptionsManager.getCategoryItems(category);
 		final boolean[] isChanged = {false}; // variables accessed inside lambdas or inner classes must be effectively final, hence create an array and change
 
-		// 2. Search Bar (Top)
+		// Search Bar 
 		JTextField searchField = new JTextField();
 		searchField.setBorder(BorderFactory.createTitledBorder("Search " + category));
 		
-		// 3. Main List Panel (Center)
 		JPanel listPanel = new JPanel();
 		listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
 		listPanel.setBackground(Color.WHITE);
 
-		// 4. Document Listener for real-time filtering
 		searchField.getDocument().addDocumentListener(new DocumentListener() {
-			public void insertUpdate(DocumentEvent e) { updateListUI(listPanel, localItems, searchField.getText(), isChanged); }
-			public void removeUpdate(DocumentEvent e) { updateListUI(listPanel, localItems, searchField.getText(), isChanged); }
-			public void changedUpdate(DocumentEvent e) { updateListUI(listPanel, localItems, searchField.getText(), isChanged); }
+			public void insertUpdate(DocumentEvent e) { updateListUI(listPanel, localItems, searchField.getText(), isChanged, false, itemsToAdd, itemsToDelete); }
+			public void removeUpdate(DocumentEvent e) { updateListUI(listPanel, localItems, searchField.getText(), isChanged, false, itemsToAdd, itemsToDelete); }
+			public void changedUpdate(DocumentEvent e) { updateListUI(listPanel, localItems, searchField.getText(), isChanged, false, itemsToAdd, itemsToDelete); }
 		});
 
-		// 5. Scrollable Area
+
 		JScrollPane scrollPane = new JScrollPane(listPanel);
 		scrollPane.getViewport().setBackground(Color.WHITE);
 		scrollPane.setBorder(BorderFactory.createEmptyBorder());
 
-		// 6. Footer (Input + Save Button)
+		// Footer (Input + Save Button)
 		JPanel footer = new JPanel(new BorderLayout(5, 5));
 		footer.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 		
@@ -249,18 +341,30 @@ class HelperFunctions {
 		saveBtn.setBorderPainted(false);
 
 		addBtn.addActionListener(e -> {
-			String val = inputField.getText().trim();
-			if (!val.isEmpty()) {
+			String val = inputField.getText().trim().toUpperCase();
+			if (!val.isEmpty() && !localItems.contains(val)) {
 				localItems.add(val);
+
+                boolean wasJustRemoved = itemsToDelete.remove(val);
+                if (!wasJustRemoved) {
+                    itemsToAdd.add(val);
+                }
+
 				isChanged[0] = true;
 				inputField.setText("");
-				updateListUI(listPanel, localItems, searchField.getText(),isChanged);
+
+                addItemtoConfigurationUI(listPanel, val, searchField.getText(), isChanged, localItems,itemsToAdd, itemsToDelete);
+                
 			}
 		});
 
 		saveBtn.addActionListener(e -> {
-			OptionsManager.saveCategoryItems(category, localItems);
-			isChanged[0] = false;
+            if (!itemsToAdd.isEmpty() || !itemsToDelete.isEmpty()) {
+                // Update locally and cloud
+                OptionsManager.saveCategoryItems(category, itemsToAdd, itemsToDelete);
+                
+                isChanged[0] = false;
+            }
 			dialog.dispose();
 		});
 
@@ -271,7 +375,7 @@ class HelperFunctions {
 		footer.add(inputRow, BorderLayout.NORTH);
 		footer.add(saveBtn, BorderLayout.SOUTH);
 
-		// 7. Safety Net: Window Listener
+		// Safety Net: Window Listener
 		dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
 		dialog.addWindowListener(new WindowAdapter() {
 			@Override
@@ -282,7 +386,12 @@ class HelperFunctions {
 						JOptionPane.YES_NO_CANCEL_OPTION);
 					
 					if (choice == JOptionPane.YES_OPTION) {
-						OptionsManager.saveCategoryItems(category, localItems);
+						if (!itemsToAdd.isEmpty() || !itemsToDelete.isEmpty()) {
+                            // Update locally and cloud
+                            OptionsManager.saveCategoryItems(category, itemsToAdd, itemsToDelete);
+                            
+                            isChanged[0] = false;
+                        }
 						dialog.dispose();
 					} else if (choice == JOptionPane.NO_OPTION) {
 						dialog.dispose();
@@ -296,44 +405,106 @@ class HelperFunctions {
 		dialog.add(scrollPane, BorderLayout.CENTER);
 		dialog.add(footer, BorderLayout.SOUTH);
 		
-		updateListUI(listPanel, localItems, "", isChanged); // Initial render
+		updateListUI(listPanel, localItems, "", isChanged, true, itemsToAdd, itemsToDelete); // Initial render
 		
 		dialog.setSize(350, 500);
 		dialog.setLocationRelativeTo(parent);
 		dialog.setVisible(true);
 	}
 
-	public static void updateListUI(JPanel listPanel, List<String> localItems, String filter, boolean[] isChanged) {
-		listPanel.removeAll();
-		String lowerFilter = filter.toLowerCase();
+    public static void updateListUI(JPanel listPanel, List<String> localItems, String filter, boolean[] isChanged, 
+        boolean initialRender, List<String> itemsToAdd, List<String> itemsToDelete) {
+    if (initialRender) {
+        listPanel.removeAll();
+        for (String item : localItems) {
+            addItemtoConfigurationUI(listPanel, item,filter,isChanged,localItems, itemsToAdd, itemsToDelete);
+        }
+    } else {
+        String lowerFilter = filter.toLowerCase();
+        for (Component comp : listPanel.getComponents()) {
+            if (comp instanceof JPanel row) {
+                JLabel label = (JLabel) row.getComponent(0); //get Label to get text
+                boolean matches = label.getText().trim().toLowerCase().contains(lowerFilter);
+                row.setVisible(matches); // set visibility depending on filters match
+            }
+        }
+    }
+    listPanel.revalidate();
+    listPanel.repaint();
+}
+}
 
-		for (String item : localItems) {
-			if (!filter.isEmpty() && !item.toLowerCase().contains(lowerFilter)) continue;
+class CloudAPI {
+    
+    public static boolean verifyConnection(String URL, String anonKey, String adminKey) {
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(URL+"/functions/v1/server-api"))
+            .header("Authorization", "Bearer " + anonKey)
+            .header("X-SERVER-HEADER", adminKey)
+            .header("X-Function", "verify-connection")
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString("{}"))
+            .build();
 
-			JPanel row = new JPanel(new BorderLayout());
-			row.setBackground(Color.WHITE);
-			row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-			row.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
+        try {
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() >= 400) {
+                System.err.println("Cloud Error (" + response.statusCode() + "): " + response.body());
+                return false;
+            }
+            
+            // Connection Validated
+            return true;
+        } catch (Exception e) {
+            System.err.println("Network/Parsing Error: " + e.getMessage());
+            return false;
+        }
+    }
 
-			JLabel label = new JLabel("  " + item);
-			JButton removeBtn = new JButton("\uD83D\uDDD1");
-			removeBtn.setForeground(Color.RED);
-			removeBtn.setBorderPainted(false);
-			removeBtn.setContentAreaFilled(false);
+    public static Object callEdgeFunction(String func, String jsonData) {
 
-			removeBtn.addActionListener(e -> {
-				localItems.remove(item);
-				isChanged[0] = true;  // Mark as changed
-				updateListUI(listPanel, localItems, filter, isChanged);
-			});
+        String anonKey = ConfigLoader.getAnonKey();
 
-			row.add(label, BorderLayout.CENTER);
-			row.add(removeBtn, BorderLayout.EAST);
-			listPanel.add(row);
-		}
-		listPanel.revalidate();
-		listPanel.repaint();
-	}
+        final String BASE_URL = ConfigLoader.getProjectUrl()+"/functions/v1/server-api";
+        final String SERVER_HEADER = ConfigLoader.config.getProperty("server.header");
+
+        // Parse the json to List of records
+        Gson gson = new Gson();
+        Type listType = new TypeToken<List<Map<String, Object>>>(){}.getType();
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(BASE_URL))
+            .header("Authorization", "Bearer " + anonKey)
+            .header("X-SERVER-HEADER", SERVER_HEADER)
+            .header("X-Function", func)
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(jsonData))
+            .build();
+
+        try {
+            // Receive response after sending request
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() >= 400) {
+                System.err.println("Cloud Error (" + response.statusCode() + "): " + response.body());
+                return null;
+            }
+            
+            String body = response.body();
+            // Parse the body into list
+            if (body.trim().startsWith("[")) {
+                return gson.fromJson(body, listType);
+            } else {
+                return gson.fromJson(body, Map.class);
+            }
+        } catch (Exception e) {
+            System.err.println("Network/Parsing Error: " + e.getMessage());
+            return null;
+        }
+    }
 }
 
 class CloudDataBaseInfo {
@@ -344,157 +515,36 @@ class CloudDataBaseInfo {
      * It does NOT save the configuration or display dialogs.
      * * @return true if the connection is successful, false otherwise.
      */
-    public static boolean verification(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
-        try (Connection conn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME, PASSWORD)) {
-            // Connection successful
-            JOptionPane.showMessageDialog(
-                null, 
-                "Connection Validated.\nDatabase info saved.", 
-                "Verification Result", 
-                JOptionPane.INFORMATION_MESSAGE
-            );
-            return true; 
-        } catch (SQLException e) {
-            // Connection failed
-            e.printStackTrace();
-            JOptionPane.showMessageDialog(
-                null, 
-                "Could not connect to JDBC Link.\nDatabase info saved.", 
-                "Verification Result", 
-                JOptionPane.WARNING_MESSAGE
-            );
+    public static boolean verification(String cloudUrl, String cloudKey, String adminKey) {
+        
+        // We send an empty request to see if the cloud responds
+        try {
+            boolean result = CloudAPI.verifyConnection(cloudUrl, cloudKey, adminKey);
+            
+            // If the function returns, the keys are valid
+            if (result) {
+                JOptionPane.showMessageDialog(null, 
+                    "Cloud Connection Validated.\nConfiguration saved.", 
+                    "Success", JOptionPane.INFORMATION_MESSAGE);
+                return true;
+            } else {
+                throw new Exception("Invalid response from Cloud.");
+            }
+            
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, 
+                "Verification Failed.\nPlease check your URL, Anon Key, and Admin Key.", 
+                "Error", JOptionPane.ERROR_MESSAGE);
             return false;
         }
     }
 
-    private static String getDatabaseType(Connection conn) throws SQLException {
-    String productName = conn.getMetaData().getDatabaseProductName().toLowerCase();
-    
-    if (productName.contains("postgresql")) return "POSTGRES";
-    if (productName.contains("mysql") || productName.contains("mariadb")) return "MYSQL";
-    if (productName.contains("sqlite")) return "SQLITE";
-    if (productName.contains("microsoft") || productName.contains("sql server")) return "MSSQL";
-    if (productName.contains("oracle")) return "ORACLE";
-    
-    return "UNKNOWN";
-}
 
-    public static void createTables(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
-        createConfigurationTableCloud(JDBC_URL_cloud, USERNAME, PASSWORD);
-        createRecordsTableCloud(JDBC_URL_cloud, USERNAME, PASSWORD);
+    public static void createTables() {
+        CloudAPI.callEdgeFunction("setup-db", "{}");
+        OptionsManager.syncPendingConfigurations();
     }
 
-    private static void createConfigurationTableCloud(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
-        String confTable = ConfigLoader.config.getProperty("CONFIGURATION_TABLE");
-
-        try (Connection conn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME, PASSWORD);
-            Statement stmt = conn.createStatement()) {
-
-            String dbType = getDatabaseType(conn);
-            String idType, timeFunc, textType;
-
-            // Dialect Mapping
-            switch (dbType) {
-                case "POSTGRES":
-                    idType = "SERIAL PRIMARY KEY";
-                    timeFunc = "TIMESTAMPTZ DEFAULT NOW()";
-                    textType = "TEXT";
-                    break;
-                case "SQLITE":
-                    idType = "INTEGER PRIMARY KEY AUTOINCREMENT";
-                    timeFunc = "DATETIME DEFAULT CURRENT_TIMESTAMP";
-                    textType = "TEXT";
-                    break;
-                case "MSSQL":
-                    idType = "INT IDENTITY(1,1) PRIMARY KEY";
-                    timeFunc = "DATETIME DEFAULT GETDATE()";
-                    textType = "NVARCHAR(MAX)";
-                    break;
-                case "ORACLE":
-                    idType = "NUMBER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY";
-                    timeFunc = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
-                    textType = "VARCHAR2(255)";
-                    break;
-                default: // MySQL / MariaDB
-                    idType = "INT AUTO_INCREMENT PRIMARY KEY";
-                    timeFunc = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP";
-                    textType = "VARCHAR(255)";
-                    break;
-            }
-
-            String sql = String.format(
-                            "CREATE TABLE IF NOT EXISTS %s (" +
-                            " id %s," + 
-                            " category %s NOT NULL," + 
-                            " item_value %s NOT NULL," + 
-                            " created_at %s," + 
-                            " UNIQUE(category, item_value)" + 
-                            ");", 
-                            confTable, idType, textType, textType, timeFunc
-                        );
-
-            stmt.executeUpdate(sql);
-
-            // Sync Local to Cloud 
-            for(String cat: DataPlace.configMap.keySet()) OptionsManager.syncConfiguration(cat, OptionsManager.getCategoryItems(cat));
-            
-        } catch (SQLException e) {
-            System.err.println("\u26A0 CRITICAL: FAILED TO CREATE CLOUD CONFIGURATION TABLE");
-            e.printStackTrace();
-        }
-    }
-
-    private static void createRecordsTableCloud(String JDBC_URL_cloud, String USERNAME, String PASSWORD) {
-        String recTable = ConfigLoader.config.getProperty("CLOUD_TABLE");
-
-        try (Connection conn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME, PASSWORD);
-            Statement stmt = conn.createStatement()) {
-            
-            String dbType = getDatabaseType(conn);
-            String textType;
-            String longTextType;
-
-            // Dialect Mapping for Records
-            switch (dbType) {
-                case "POSTGRES":
-                case "SQLITE":
-                    textType = "TEXT";
-                    longTextType = "TEXT";
-                    break;
-                case "MSSQL":
-                    textType = "NVARCHAR(255)";
-                    longTextType = "NVARCHAR(MAX)";
-                    break;
-                case "ORACLE":
-                    textType = "VARCHAR2(255)";
-                    longTextType = "CLOB"; // Use Character Large Object for JSON strings
-                    break;
-                default: // MYSQL / MariaDB
-                    textType = "VARCHAR(255)";
-                    longTextType = "TEXT";
-                    break;
-            }
-
-            String sql = String.format(
-                "CREATE TABLE IF NOT EXISTS %s (" +
-                " session_id %s PRIMARY KEY," + 
-                " login_time %s NOT NULL," + 
-                " logout_time %s," + 
-                " usn %s NOT NULL," +
-                " name %s NOT NULL," +
-                " details %s" +     // This holds all dynamic attributes in jSON String{Subject, dept, sem}
-                ");", 
-                recTable, textType, textType, textType, textType, textType, longTextType
-            );
-
-            stmt.executeUpdate(sql);
-            System.out.println("✓ Cloud Records Table initialized for " + dbType);
-
-        } catch (SQLException e) {
-            System.err.println("\u26A0 CRITICAL: FAILED TO CREATE CLOUD RECORDS TABLE");
-            e.printStackTrace();
-        }
-    }
 }
 
 class ConfigLoader {
@@ -559,10 +609,12 @@ class ConfigLoader {
             OptionsManager.createConfigurationTableLocal(getLocalDBUrl()); 
 
             // Use capitalized keys to match your JComboBox headers and JSON extraction logic
-            OptionsManager.saveCategoryItems("Subject", new ArrayList<>(List.of("BXLX101","BXLX102","BXXX3L3","BXXX5L5")));
-            OptionsManager.saveCategoryItems("Department", new ArrayList<>(List.of("CSE (cs)","ISE (is)","AIML (ai)","DS (cd)","ECE (ec)","MECH (me)","CIVIL (cv)")));
-            OptionsManager.saveCategoryItems("Batch", new ArrayList<>(List.of("I", "II")));
-            OptionsManager.saveCategoryItems("Sem", new ArrayList<>(List.of("1","2","3","4","5","6","7","8")));
+            OptionsManager.saveCategoryItems("Subject", new ArrayList<>(List.of("1.1 BXLX101","1.2 BXLX102","1.3 BXXX3L3","1.5 BXXX5L5", "OTHERS")), new ArrayList<>());
+            OptionsManager.saveCategoryItems("Department", new ArrayList<>(List.of("CSE (cs)","ISE (is)","AIML (ai)","DS (cd)","ECE (ec)","MECH (me)","CIVIL (cv)")), new ArrayList<>());
+            OptionsManager.saveCategoryItems("Batch", new ArrayList<>(List.of("I", "II")), new ArrayList<>());
+            OptionsManager.saveCategoryItems("Sem", new ArrayList<>(List.of("1","2","3","4","5","6","7","8")), new ArrayList<>());
+            OptionsManager.saveCategoryItems("SysNo", new ArrayList<>(List.of("11","12","13","14","15","16","17","18","19","20")), new ArrayList<>());
+            OptionsManager.saveCategoryItems("LabName", new ArrayList<>(List.of("314","205 A","304","309","205 B")), new ArrayList<>());
             
             // Refresh the memory map immediately so the UI is ready
             DataPlace.configMap = HelperFunctions.loadConfigMap(getLocalDBUrl());
@@ -605,10 +657,10 @@ class ConfigLoader {
     /**
      * Centralized method to update and save all cloud DB properties.
      */
-    public static void saveCloudDbConfig(String url, String user, String password, boolean verified) {
-        config.setProperty("JDBC_URL_cloud", url);
-        config.setProperty("JDBC_USERNAME_cloud", user);
-        config.setProperty("JDBC_PASSWORD_cloud", password);
+    public static void saveCloudDbConfig(String url, String key,String adminKey, boolean verified) {
+        config.setProperty("project.url", url);
+        config.setProperty("anon.key", key);
+        config.setProperty("server.header", adminKey); 
         config.setProperty("CLOUD_DB_VERIFIED", String.valueOf(verified));
         saveProperties();
     }
@@ -626,6 +678,15 @@ class ConfigLoader {
 
         return "jdbc:sqlite:" + CONFIG_DIR_PATH.resolve(DB_FILE_NAME).toString();
     }
+
+    public static String getAnonKey() {
+        return config.getProperty("anon.key");
+    }
+
+    public static String getProjectUrl() {
+        return config.getProperty("project.url");
+    }
+
     
     public static void setLocalLastRunDateToNow() throws IOException {
         config.setProperty("local.auto.delete.last.run.date", LocalDate.now().toString());
@@ -707,6 +768,7 @@ class OptionsManager {
     public static void createRecordsTableLocal(Connection localConn) {
         String localTable = ConfigLoader.config.getProperty("LOCAL_TABLE");
         try (Statement stmt = localConn.createStatement()) {
+            // 1. Create Table if not exist
             stmt.executeUpdate("CREATE TABLE IF NOT EXISTS " + localTable + " (" +
                     "session_id TEXT PRIMARY KEY, " +
                     "login_time TEXT, " +
@@ -757,35 +819,59 @@ class OptionsManager {
         return items;
     }    
 
-    public static void saveCategoryItems(String category, List<String> items) {
+    public static void saveCategoryItems(String category, List<String> toAdd, List<String> toDelete) {
         String confTable = ConfigLoader.config.getProperty("CONFIGURATION_TABLE");
+        
         try (Connection localCon = DriverManager.getConnection(ConfigLoader.getLocalDBUrl())) {
             localCon.setAutoCommit(false);
 
-            // 1. Delete old
-            try (PreparedStatement deleteStmt = localCon.prepareStatement("DELETE FROM " + confTable + " WHERE category = ?")) {
-                deleteStmt.setString(1, category);
-                deleteStmt.executeUpdate();
+            // Deletion
+            if (!toDelete.isEmpty()) {
+                String deleteSql = "DELETE FROM " + confTable + " WHERE category = ? AND item_value = ?";
+                try (PreparedStatement deleteStmt = localCon.prepareStatement(deleteSql)) {
+                    for (String item : toDelete) {
+                        deleteStmt.setString(1, category);
+                        deleteStmt.setString(2, item.toUpperCase());
+                        deleteStmt.addBatch();
+                    }
+                    deleteStmt.executeBatch();
+                }
             }
 
-            // 2. Insert new
-            try (PreparedStatement localStm = localCon.prepareStatement("INSERT INTO " + confTable + " (category, item_value) VALUES (?, ?)")) {
-                for (String option : items) {
-                    localStm.setString(1, category);
-                    localStm.setString(2, option);
-                    localStm.addBatch();
+            // Insertion
+            if (!toAdd.isEmpty()) {
+                String insertSql = "INSERT OR IGNORE INTO " + confTable + " (category, item_value) VALUES (?, ?)";
+                try (PreparedStatement localStm = localCon.prepareStatement(insertSql)) {
+                    for (String option : toAdd) {
+                        localStm.setString(1, category);
+                        localStm.setString(2, option.toUpperCase());
+                        localStm.addBatch();
+                    }
+                    localStm.executeBatch();
                 }
-                localStm.executeBatch();
             }
             
-            localCon.commit(); // Save local changes
+            localCon.commit(); 
+            System.out.println("✓ Local " + category + " updated. Added: " + toAdd.size() + ", Removed: " + toDelete.size());
 
-            // 3. Cloud Sync
-            boolean cloudVerified = Boolean.parseBoolean(ConfigLoader.config.getProperty("CLOUD_DB_VERIFIED", "false"));
-            if (cloudVerified) {
-                syncConfiguration(category, items);
-            } else {
-                System.out.println("WARNING: Cloud Config Sync failed");
+            // Sync cloud
+            if (Boolean.parseBoolean(ConfigLoader.config.getProperty("CLOUD_DB_VERIFIED", "false"))) syncConfiguration(category, toAdd, toDelete);
+            else { 
+                String json = new Gson().toJson(Map.of(
+                    "category", category,
+                    "toAdd", toAdd,
+                    "toDelete", toDelete
+                ));
+                String currentQueue = ConfigLoader.config.getProperty("pending.sync", "");
+                    
+                // Use "|||" as a separator between JSON objects
+                if (!currentQueue.isEmpty()) {
+                    currentQueue += "|||"; 
+                }
+                currentQueue += json; 
+
+                ConfigLoader.config.setProperty("pending.sync", currentQueue);
+                ConfigLoader.saveProperties();
             }
             
         } catch (SQLException e) {
@@ -793,37 +879,72 @@ class OptionsManager {
             e.printStackTrace();
         }
 
-        // 4. Update configMap
+        // Update global memory map
         DataPlace.configMap = HelperFunctions.loadConfigMap(ConfigLoader.getLocalDBUrl());
     }
 
-    public static void syncConfiguration(String category, List<String> options) {
-        String JDBC_URL_cloud = ConfigLoader.config.getProperty("JDBC_URL_cloud");
-        String USERNAME_cloud = ConfigLoader.config.getProperty("JDBC_USERNAME_cloud");
-	    String PASSWORD_cloud = ConfigLoader.config.getProperty("JDBC_PASSWORD_cloud");
-        String conf_table = ConfigLoader.config.getProperty("CONFIGURATION_TABLE");
+    public static void syncConfiguration(String category, List<String> itemsToAdd, List<String> itemsToDelete) {
+        String json = new Gson().toJson(Map.of(
+            "category", category,
+            "toAdd", itemsToAdd,
+            "toDelete", itemsToDelete
+        ));
 
-        try(Connection cloudCon = DriverManager.getConnection(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud)) {
-            String deleteSQL = "DELETE FROM " + conf_table + " WHERE category = ?";
-            try (PreparedStatement deleteStmt = cloudCon.prepareStatement(deleteSQL)) {
-                deleteStmt.setString(1, category);
-                deleteStmt.executeUpdate();
-            }
+        if (!itemsToAdd.isEmpty() || !itemsToDelete.isEmpty()) {
+            new Thread(() -> {
+                try {
+                    Object response = CloudAPI.callEdgeFunction("sync-categories", json);
+                    if (response == null) throw new Exception("Cloud rejected the sync.");
+                    
+                    System.out.println("✓ Cloud Sync Successful for " + category);
+                } catch (Exception ex) {
+                    // If it fails, save in config file
+                    String currentQueue = ConfigLoader.config.getProperty("pending.sync", "");
+                    
+                    // Use "|||" as a separator between JSON objects
+                    if (!currentQueue.isEmpty()) {
+                        currentQueue += "|||"; 
+                    }
+                    currentQueue += json; 
 
-            String insertStmt = "INSERT INTO " + conf_table + " (category,item_value) VALUES (? ,?)";
-            PreparedStatement cloudstm = cloudCon.prepareStatement(insertStmt);
-            cloudstm.setString(1, category);
-            for(String option: options) {
-                cloudstm.setString(2,option);
-                cloudstm.addBatch();
-            }
-            cloudstm.executeBatch();
-            System.out.println("Cloud Sync: " + category + " updated.");
-        } catch (SQLException e) {
-            System.err.println("Cloud Sync Failed for " + category);
-            e.printStackTrace();
+                    ConfigLoader.config.setProperty("pending.sync", currentQueue);
+                    ConfigLoader.saveProperties();
+
+                    // pop an error back on the UI thread
+                    HelperFunctions.showSyncStatusDialog(
+                        "Cloud sync failed for " + category + ". Local changes saved.", 
+                        javax.swing.JOptionPane.WARNING_MESSAGE
+                    );
+                    ex.printStackTrace();
+                }
+            }).start();
         }
+    }
+    public static void syncPendingConfigurations() {
+        String pending = ConfigLoader.config.getProperty("pending.sync", "");
+        if (pending.isEmpty()) return;
 
+        // Convert "{...}|||{...}" into "[{...},{...}]"
+        String jsonArray = "[" + pending.replace("|||", ",") + "]";
+
+        new Thread(() -> {
+            try {
+                if (Boolean.parseBoolean(ConfigLoader.config.getProperty("CLOUD_DB_VERIFIED", "false"))) {
+                    // Send the whole array
+                    Object response = CloudAPI.callEdgeFunction("sync-categories", jsonArray);
+
+                    if (response != null) {
+                        // Successfully synced, clear the queue 
+                        ConfigLoader.config.setProperty("pending.sync", "");
+                        ConfigLoader.saveProperties();
+                        System.out.println("✓ Pending cloud sync resolved.");
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Cloud still unreachable. Keeping pending sync.");
+                e.printStackTrace();
+            }
+        }).start();
     }
 }
 

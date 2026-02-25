@@ -13,13 +13,14 @@ class SessionRecord {
     String usn, name, sessionId;
     LocalDateTime loginTime, logoutTime;
     Map<String, String> attributes;
+    static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd[ ]['T']HH:mm[:ss][.SSSSSSSSS]");
 
     public SessionRecord(String loginTime, String logoutTime, String usn, String name, Map<String, String> attributes, String sessionId) {
-        this.loginTime = LocalDateTime.parse(loginTime);
+        this.loginTime = LocalDateTime.parse(loginTime,FORMATTER );
         if (logoutTime == null || logoutTime.equals("null"))
             this.logoutTime = null;
         else
-            this.logoutTime = LocalDateTime.parse(logoutTime);
+            this.logoutTime = LocalDateTime.parse(logoutTime, FORMATTER);
         this.usn = usn;
         this.name = name;
         this.attributes = attributes;
@@ -136,46 +137,30 @@ class SessionGrouper {
         LocalTime start = starts.toLocalTime();
         LocalTime end = (ends == null) ? null : ends.toLocalTime();
 
-        String from = "08:30 - ";
-        String to = "16:00";
+        String from;
+        if (!start.isBefore(LocalTime.of(16, 0))) from = "16:00 - ";
+        else if (!start.isBefore(LocalTime.of(15, 10))) from = "15:10 - ";
+        else if (!start.isBefore(LocalTime.of(14, 20))) from = "14:20 - ";
+        else if (!start.isBefore(LocalTime.of(13, 30))) from = "13:30 - ";
+        else if (!start.isBefore(LocalTime.of(12, 05))) from = "12:05 - ";
+        else if (!start.isBefore(LocalTime.of(11, 15))) from = "11:15 - ";
+        else if (!start.isBefore(LocalTime.of(10, 10))) from = "10:00 - ";
+        else if (!start.isBefore(LocalTime.of(9, 20)))  from = "09:20 - ";
+        else from = "08:30 - "; 
 
-        if (!start.isBefore(LocalTime.of(16, 0, 0)))
-            from = "16:00 - ";
-        else if (!start.isBefore(LocalTime.of(15, 10, 0)) && !start.isAfter(LocalTime.of(16, 0, 0)))
-            from = "15:10 - ";
-        else if (!start.isBefore(LocalTime.of(14,20,0)) && !start.isAfter(LocalTime.of(15, 10, 0)))
-            from = "14:20 - ";
-        else if (!start.isBefore(LocalTime.of(13, 30, 0)) && !start.isAfter(LocalTime.of(14, 20, 0)))
-            from = "13:30 - ";
-        else if (!start.isBefore(LocalTime.of(12, 05, 0)) && !start.isAfter(LocalTime.of(12, 55, 0)))
-            from = "12:05 - ";
-        else if (!start.isBefore(LocalTime.of(11, 15, 0)) && !start.isAfter(LocalTime.of(12, 05, 0)))
-            from = "11:15 - ";
-        else if (!start.isBefore(LocalTime.of(10, 10, 0)) && !start.isAfter(LocalTime.of(11, 0, 0)))
-            from = "10:00 - ";
-        else if (!start.isBefore(LocalTime.of(9, 20, 0)) && !start.isAfter(LocalTime.of(10, 10, 0)))
-            from = "09:20 - ";
-        else if (!start.isBefore(LocalTime.of(8, 30, 0)) && !start.isAfter(LocalTime.of(9, 20, 0)))
-            from = "08:30 - ";
-
-        if (end == null)
+        String to;
+        if (end == null) {
             to = "Ongoing";
-        else if (!end.isBefore(LocalTime.of(15, 20, 0)) && !end.isAfter(LocalTime.of(16, 10, 0)))
-            to = "16:00";
-        else if (!end.isBefore(LocalTime.of(14, 30, 0)) && !end.isAfter(LocalTime.of(15, 20, 0)))
-            to = "15:10";
-        else if (!end.isBefore(LocalTime.of(13, 30, 0)) && !end.isAfter(LocalTime.of(14, 30, 0)))
-            to = "14:20";
-        else if (!end.isBefore(LocalTime.of(12, 15, 0)) && !end.isAfter(LocalTime.of(13, 30, 0)))
-            to = "12:55";
-        else if (!end.isBefore(LocalTime.of(11, 15, 0)) && !end.isAfter(LocalTime.of(12, 15, 0)))
-            to = "12:05";
-        else if (!end.isBefore(LocalTime.of(10, 20, 0)) && !end.isAfter(LocalTime.of(11, 15, 0)))
-            to = "11:00";
-        else if (!end.isBefore(LocalTime.of(9, 30, 0)) && !end.isAfter(LocalTime.of(10, 20, 0)))
-            to = "10:10";
-        else if (!end.isBefore(LocalTime.of(8, 30, 0)) && !end.isAfter(LocalTime.of(9, 30, 0)))
-            to = "09:20";
+        } else {
+            if (!end.isBefore(LocalTime.of(15, 20))) to = "16:00";
+            else if (!end.isBefore(LocalTime.of(14, 30))) to = "15:10";
+            else if (!end.isBefore(LocalTime.of(13, 30))) to = "14:20";
+            else if (!end.isBefore(LocalTime.of(12, 15))) to = "12:55";
+            else if (!end.isBefore(LocalTime.of(11, 15))) to = "12:05";
+            else if (!end.isBefore(LocalTime.of(10, 20))) to = "11:00";
+            else if (!end.isBefore(LocalTime.of(9, 30)))  to = "10:10";
+            else to = "08:30";
+        }
 
         return from + to;
     }

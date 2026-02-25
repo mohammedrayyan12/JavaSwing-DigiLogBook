@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.sql.*;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
@@ -40,10 +41,11 @@ class DataPlace {
     private static String table = ConfigLoader.config.getProperty("LOCAL_TABLE"); 
     static boolean matchSlotConditon = false;
 
-    private static String JDBC_URL_cloud = ConfigLoader.config.getProperty("JDBC_URL_cloud");
+    private static String cloudUrl = ConfigLoader.config.getProperty("project.url");
+	private static String cloudKey = ConfigLoader.config.getProperty("anon.key");
+	private static String cloudAdminKeyValue = ConfigLoader.config.getProperty("server.header");
+
     private final static String JDBC_URL_local = ConfigLoader.getLocalDBUrl(); 
-	private static String USERNAME_cloud = ConfigLoader.config.getProperty("JDBC_USERNAME_cloud");
-	private static String PASSWORD_cloud = ConfigLoader.config.getProperty("JDBC_PASSWORD_cloud");
 
 	// Store categories and their options
 	static Map<String, List<String>> configMap = HelperFunctions.loadConfigMap(JDBC_URL_local);
@@ -60,47 +62,89 @@ class DataPlace {
 	}
 
 	
-	static void syncDatabases() {
+	private static String getLatestLocalTimestamp(Connection localConn,String in_out) {
+		String sql = String.format("SELECT MAX(%s) FROM %s", in_out, ConfigLoader.config.getProperty("LOCAL_TABLE"));
+
+		try (Statement stmt = localConn.createStatement();
+			ResultSet rs = stmt.executeQuery(sql)) {
+			
+			if (rs.next() && rs.getString(1) != null) {
+				return rs.getString(1);
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		return "1970-01-01 00:00:00"; // Fallback: Fetch everything if local is empty
+	}
+
+	static boolean syncDatabases() {
 		
-		if (table.equals("temp")) return;
+		if (table.equals("temp")) return false;
 
 		String localTable = ConfigLoader.config.getProperty("LOCAL_TABLE");
-		String cloudTable = ConfigLoader.config.getProperty("CLOUD_TABLE");
 
-		try (Connection cloudConn = DriverManager.getConnection(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud);
-			Connection localConn = DriverManager.getConnection(JDBC_URL_local)) {
+		try (Connection localConn = DriverManager.getConnection(JDBC_URL_local)) {
 
 			// 1. Setup local table if not exist to match cloud structure
 			OptionsManager.createRecordsTableLocal(localConn);
 	
+			String lastLoginLocalTime = getLatestLocalTimestamp(localConn, "login_time");
+			String lastLogoutLocalTime = getLatestLocalTimestamp(localConn, "logout_time");
 
-			// 2. Fetch all from Cloud
-			String selectSql = "SELECT session_id, login_time, logout_time, name, usn, details FROM " + cloudTable;
-			
-			localConn.setAutoCommit(false);
-			String insertSql = "INSERT OR REPLACE INTO " + localTable + 
-							" (session_id, login_time, logout_time, usn, name, details) VALUES (?, ?, ?, ?, ?, ?)";
-			
-			try (PreparedStatement cloudStmt = cloudConn.prepareStatement(selectSql);
-				ResultSet rs = cloudStmt.executeQuery();
-				PreparedStatement localStmt = localConn.prepareStatement(insertSql)) {
+			String jsonData = String.format( "{\"lastLoginTimestamp\":\"%s\", \"lastLogoutTimestamp\":\"%s\"}", 
+							lastLoginLocalTime, 
+							lastLogoutLocalTime
+						);
 
-				while (rs.next()) {
-					localStmt.setString(1, rs.getString("session_id"));
-					localStmt.setString(2, rs.getString("login_time"));
-					localStmt.setString(3, rs.getString("logout_time"));
-					localStmt.setString(4, rs.getString("usn"));
-					localStmt.setString(5, rs.getString("name"));
-					localStmt.setString(6, rs.getString("details")); // Just move the entire string => parse the string to behave like json
-					localStmt.addBatch();
+			Object result = CloudAPI.callEdgeFunction("fetch-new-data", jsonData);
+
+			if (result instanceof List) {
+				// This is the specific type cast
+				@SuppressWarnings("unchecked")
+				List<Map<String, Object>> cloudRecords = (List<Map<String, Object>>) result;
+
+				localConn.setAutoCommit(false);
+				String insertSql = "INSERT OR REPLACE INTO " + localTable + 
+								" (session_id, login_time, logout_time, usn, name, details) VALUES (?, ?, ?, ?, ?, ?)";
+				
+				try (PreparedStatement localStmt = localConn.prepareStatement(insertSql)) {
+					for (Map<String, Object> record : cloudRecords) {
+						localStmt.setString(1, (String) record.get("session_id"));
+						localStmt.setString(2, (String) record.get("login_time"));
+						localStmt.setString(3, (String) record.get("logout_time"));
+						localStmt.setString(4, (String) record.get("usn"));
+						localStmt.setString(5, (String) record.get("name"));
+						localStmt.setString(6, (String) record.get("details")); // Just move the entire string => parse the string to behave like json
+						localStmt.addBatch();
+					}
+					localStmt.executeBatch();
 				}
-				localStmt.executeBatch();
+				localConn.commit();
+				localConn.setAutoCommit(true);
+				System.out.println("✓ Mirror Sync Complete. New/Updated Entries = "+ cloudRecords.size());
+				if (cloudRecords.isEmpty()) {
+					HelperFunctions.showSyncStatusDialog(
+						"Database is already up to date.", 
+						JOptionPane.INFORMATION_MESSAGE
+					);
+				} else {
+					HelperFunctions.showSyncStatusDialog(
+						"Successfully synced " + cloudRecords.size() + " new/updated entries.", 
+						JOptionPane.INFORMATION_MESSAGE
+					);
+				}
+				return true;
+			} else {
+				System.err.println("Unexpected response type from Cloud: " + (result != null ? result.getClass().getName() : "null"));
+				return false;
 			}
-			localConn.commit();
-			localConn.setAutoCommit(true);
-			System.out.println("✓ Mirror Sync Complete.");
 		} catch (SQLException e) {
 			e.printStackTrace();
+			HelperFunctions.showSyncStatusDialog(
+				"Database Error: " + e.getMessage(),
+				JOptionPane.ERROR_MESSAGE
+			);
+			return false;
 		}
 	}
     
@@ -391,9 +435,9 @@ class DataPlace {
 				gbc.weightx = 1.0;
 
 				JLabel cloudDatabaseLabel = new JLabel("Cloud Database Configuration");
-				JLabel cloudDatabaseLinkLabel = new JLabel("Cloud Database Link"); cloudDatabaseLinkLabel.setVisible(false);
-				JLabel cloudDatabaseUserLabel = new JLabel("Cloud Database Username:"); cloudDatabaseUserLabel.setVisible(false);
-				JLabel cloudDatabasePsswdLabel = new JLabel("Cloud Database Password:"); cloudDatabasePsswdLabel.setVisible(false);
+				JLabel cloudProjectURL = new JLabel("Project URL:"); cloudProjectURL.setVisible(false);
+				JLabel cloudProjectKey = new JLabel("Publishable/Anon Key:"); cloudProjectKey.setVisible(false);
+				JLabel cloudAdminKey = new JLabel("Admin Key:"); cloudAdminKey.setVisible(false);
 
 				gbc.gridx = 0;
 				gbc.gridy = 0;
@@ -407,62 +451,22 @@ class DataPlace {
 				gbcs.weightx = 1.0;
 
 				boolean isVerified = Boolean.parseBoolean(ConfigLoader.config.getProperty("CLOUD_DB_VERIFIED", "false"));
-				JLabel verifiedorNot = (isVerified) ? new JLabel("Verfied"): new JLabel("Not Verified");
+				JLabel verifiedorNot = (isVerified) ? new JLabel("Verfied"): new JLabel("Verification Failed\nRe-configure application with right credentials");
 				verifiedorNot.setFont(new Font("Arial", Font.BOLD, 14));
-				if (isVerified) verifiedorNot.setForeground(new Color(52, 199, 89));
+				if (isVerified) verifiedorNot.setForeground(new Color(52, 199, 89)); // Green
 				else verifiedorNot.setForeground(Color.RED);
 
-				JDBC_URL_cloud = ConfigLoader.config.getProperty("JDBC_URL_cloud");
+				if (cloudUrl != null && !cloudUrl.isEmpty()) {
+					JTextField cloudUrlField = new JTextField(cloudUrl, 25);
+					cloudUrlField.setEditable(false);
+					JTextField cloudKeyField = new JTextField(cloudKey,25); cloudKeyField.setVisible(false);
 
-				if (JDBC_URL_cloud != null && !JDBC_URL_cloud.isEmpty()) {
-					JTextField cloudDatabaseLinkField = new JTextField(JDBC_URL_cloud, 25);
-					cloudDatabaseLinkField.setEditable(false);
-					JTextField cloudDatabaseUserField = new JTextField(USERNAME_cloud,25); cloudDatabaseUserField.setVisible(false);
-					JPasswordField cloudDatabasePsswdField = new JPasswordField(PASSWORD_cloud,25); cloudDatabasePsswdField.setVisible(false);
-
-					JButton editButton = new JButton("Edit ✎");
-					
-					editButton.addActionListener(ee -> {
-						cloudDatabaseLinkField.requestFocus();  //Input Focus
-						boolean isVisible = !cloudDatabaseUserField.isVisible();
-						verifiedorNot.setVisible(!isVisible); //Verified Label
-						cloudDatabaseLinkLabel.setVisible(isVisible); //Link Label
-						cloudDatabaseUserLabel.setVisible(isVisible); //Username Label
-						cloudDatabasePsswdLabel.setVisible(isVisible); //Password Label
-						cloudDatabaseLinkField.setEditable(!cloudDatabaseLinkField.isEditable()); //Link field
-						cloudDatabaseUserField.setVisible(!cloudDatabaseUserField.isVisible()); //Username field
-						cloudDatabasePsswdField.setVisible(!cloudDatabasePsswdField.isVisible()); //Password field
-
-						editButton.setText(cloudDatabaseLinkField.isEditable() ? "Verify" : "Edit ✎"); //Edit Button
-						if (!cloudDatabaseLinkField.isEditable()) {        
-							JDBC_URL_cloud = cloudDatabaseLinkField.getText().trim();
-							USERNAME_cloud = cloudDatabaseUserField.getText().trim();
-							PASSWORD_cloud = new String(cloudDatabasePsswdField.getPassword()).trim();
-
-							boolean verification = CloudDataBaseInfo.verification(JDBC_URL_cloud,USERNAME_cloud,PASSWORD_cloud);
-
-							ConfigLoader.saveCloudDbConfig(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud, verification);
-							
-							if(!verification) {
-								verifiedorNot.setText("Not Verified");
-								verifiedorNot.setForeground(Color.RED); 
-							} else {
-								CloudDataBaseInfo.createTables(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud);
-								verifiedorNot.setText("Verified");
-								verifiedorNot.setForeground(new Color(52, 199, 89)); // Green
-							}
-						}
-						settingsDialog.pack();
-					});
 					int iX = 0, iY=0;
-					gbcs.gridx = iX; gbcs.gridy=iY++; sensitivePanel.add(cloudDatabaseLinkLabel,gbcs);
-					gbcs.gridx = iX; gbcs.gridy=iY++; sensitivePanel.add(cloudDatabaseLinkField,gbcs);
-					gbcs.gridx = ++iX; sensitivePanel.add(editButton,gbcs);
-					gbcs.gridx = --iX; gbcs.gridy=iY++; sensitivePanel.add(cloudDatabaseUserLabel,gbcs);
-					gbcs.gridy = iY++; sensitivePanel.add(cloudDatabaseUserField,gbcs);
-					gbcs.gridy = iY++; sensitivePanel.add(cloudDatabasePsswdLabel,gbcs);
-					gbcs.gridy = iY++; sensitivePanel.add(cloudDatabasePsswdField,gbcs);
-
+					gbcs.gridx = iX; 
+					gbcs.gridy=iY++; sensitivePanel.add(cloudProjectURL,gbcs);
+					gbcs.gridy=iY++; sensitivePanel.add(cloudUrlField,gbcs);
+					gbcs.gridy=iY++; sensitivePanel.add(cloudProjectKey,gbcs);
+					gbcs.gridy = iY++; sensitivePanel.add(cloudKeyField,gbcs); 
 
 				} else {
 					verifiedorNot.setVisible(false);
@@ -479,40 +483,65 @@ class DataPlace {
 						innerGbc.insets = new Insets(5, 10, 5, 10);
 						innerGbc.weightx = 1.0;
 
-						JTextField cloudDatabaseLinkField = new JTextField(20);
-						JTextField cloudDatabaseUserField = new JTextField(20);
-						JPasswordField cloudDatabasePsswdField = new JPasswordField(20); // JPasswordField
+						JTextField cloudUrlField = new JTextField(20);
+						JTextField cloudKeyField = new JTextField(20);
+						JPasswordField cloudAdminKeyField = new JPasswordField(20);
 						JButton saveButton = new JButton("Verify and Save");
 
-						innerGbc.gridx = 0; innerGbc.gridy = 0; addInfoDialog.add(new JLabel("<html>Enter JDBC Link <font color='red'>*</font></html>"), innerGbc);
-						innerGbc.gridy = 1; addInfoDialog.add(cloudDatabaseLinkField, innerGbc);
-						innerGbc.gridy = 2; addInfoDialog.add(new JLabel("Enter Username (if any)"), innerGbc);    
-						innerGbc.gridy = 3; addInfoDialog.add(cloudDatabaseUserField, innerGbc);                
-						innerGbc.gridy = 4; addInfoDialog.add(new JLabel("Enter password (if any)"), innerGbc);
-						innerGbc.gridy = 5; addInfoDialog.add(cloudDatabasePsswdField, innerGbc);
-						innerGbc.gridy = 6; addInfoDialog.add(saveButton, innerGbc);
+						innerGbc.gridx = 0; innerGbc.gridy = 0; addInfoDialog.add(new JLabel("<html>Enter Project URL<font color='red'>*</font></html>"), innerGbc);
+						innerGbc.gridy++; addInfoDialog.add(cloudUrlField, innerGbc);                
+						innerGbc.gridy++; addInfoDialog.add(new JLabel("<html>Enter Publishable/Anon Key<font color='red'>*</font></html>"), innerGbc);
+						innerGbc.gridy++; addInfoDialog.add(cloudKeyField, innerGbc);
+						innerGbc.gridy++; addInfoDialog.add(new JLabel("<html>Enter Admin Key<font color='red'>*</font></html>"),innerGbc);
+						innerGbc.gridy++; addInfoDialog.add(cloudAdminKeyField, innerGbc);
+						innerGbc.gridy++; addInfoDialog.add(saveButton, innerGbc);
 						
 						saveButton.addActionListener(eee -> {
-							if (cloudDatabaseLinkField.getText().trim().isEmpty()) {
-								JOptionPane.showMessageDialog(addInfoDialog, "JDBC Link cannot be blank.", "Invalid Input", JOptionPane.ERROR_MESSAGE);
+
+							cloudUrl = cloudUrlField.getText().trim();
+							cloudKey = cloudKeyField.getText().trim();
+							cloudAdminKeyValue = new String(cloudAdminKeyField.getPassword()).trim();
+
+							if (cloudUrl.isEmpty() || cloudKey.isEmpty() || cloudAdminKeyValue.isEmpty() ) {
+								JOptionPane.showMessageDialog(addInfoDialog, "Cannot be blank.", "Invalid Input", JOptionPane.ERROR_MESSAGE);
 								return;
-							}                            
-							JDBC_URL_cloud = cloudDatabaseLinkField.getText().trim();
-							USERNAME_cloud = cloudDatabaseUserField.getText().trim();
-							PASSWORD_cloud = new String(cloudDatabasePsswdField.getPassword()).trim();
+							}
 
+							boolean verification = CloudDataBaseInfo.verification(cloudUrl,cloudKey, cloudAdminKeyValue);
 
-							boolean verification = CloudDataBaseInfo.verification(JDBC_URL_cloud,USERNAME_cloud,PASSWORD_cloud);
-
-							ConfigLoader.saveCloudDbConfig(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud, verification );
+							ConfigLoader.saveCloudDbConfig(cloudUrl, cloudKey, cloudAdminKeyValue, verification );
 
 							if(!verification) {
-								verifiedorNot.setText("Not Verified");
+								verifiedorNot.setText("Verification Failed. Re-configure application with right credentials");
 								verifiedorNot.setForeground(Color.RED); 
 							} else {
-								CloudDataBaseInfo.createTables(JDBC_URL_cloud, USERNAME_cloud, PASSWORD_cloud);
-								verifiedorNot.setText("Verified");
-								verifiedorNot.setForeground(new Color(52, 199, 89)); // Green
+								// 
+								verifiedorNot.setText("Verifying & Setting up Cloud...");
+    							verifiedorNot.setForeground(Color.ORANGE);
+								// Background task
+								new Thread(() -> {
+									try {
+										CloudDataBaseInfo.createTables();
+
+										SwingUtilities.invokeLater(() -> {
+											verifiedorNot.setText("Verified"); // Change verified status
+											verifiedorNot.setForeground(new Color(52, 199, 89)); // Green
+										});
+									} catch (Exception ex) {
+										// If it fails, pop an error back on the UI thread
+										SwingUtilities.invokeLater(() -> {
+											verifiedorNot.setText("Verification Failed"); // Change verified status
+											verifiedorNot.setForeground(new Color(52, 199, 89)); // Green
+										});
+
+										HelperFunctions.showSyncStatusDialog(
+											"Cloud table creation failed, Re-configure the application", 
+											JOptionPane.WARNING_MESSAGE
+										);
+										ex.printStackTrace();
+									}
+								}).start();
+							
 							}
 
 							addInfoDialog.dispose();
@@ -819,28 +848,59 @@ class DataPlace {
 					mainPanel.add(deleteConfigurations, gbc);
 
 					deleteConfigurations.addActionListener(ee -> {
-						String message = "Are you sure you want to delete all configurations?\n" +
-							"This action is permanent and will terminate the application.";
-						String heading = "Confirm Critical Deletion";
+						// Checkbox for cloud deletion 
+						JCheckBox deleteCloudCB = new JCheckBox("Wipe Cloud Database (Delete all tables)");
+						deleteCloudCB.setForeground(java.awt.Color.RED);
+						deleteCloudCB.setFocusPainted(false);
 
+						// Layout 
+						JPanel panel = new JPanel();
+						panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+						
+						panel.add(new JLabel("CRITICAL ACTION: This will delete local configurations."));
+						panel.add(new JLabel("The application will terminate and must be re-configured."));
+						panel.add(Box.createVerticalStrut(15));
+						panel.add(deleteCloudCB);
+						panel.add(Box.createVerticalStrut(5));
+						panel.add(new JLabel("<html><i>Warning: Deleting the cloud is irreversible.</i></html>"));
+
+						// Confirm Dialog
 						int response = JOptionPane.showConfirmDialog(
 							mainPanel, 
-							message, 
-							heading, 
+							panel, 
+							"Confirm Critical Deletion", 
 							JOptionPane.YES_NO_OPTION, 
 							JOptionPane.WARNING_MESSAGE
 						);
 
+						// Deletion
 						if (response == JOptionPane.YES_OPTION) {
-							Path CONFIG_DIR_PATH = Paths.get(System.getProperty("user.home"), ".DigiLogBook");
-							ConfigLoader.deleteConfigFolder(CONFIG_DIR_PATH);
-							
-							// Terminate the app
-							System.out.println("Terminating Application...");
-							System.exit(0);
+							try {
+								// Perform Local Cleanup 
+								System.out.println("Deleting local data...");
+
+								Path CONFIG_DIR_PATH = Paths.get(System.getProperty("user.home"), ".DigiLogBook");
+								ConfigLoader.deleteConfigFolder(CONFIG_DIR_PATH);
+
+								// Check if Cloud Wipe was requested
+								if (deleteCloudCB.isSelected() && Boolean.parseBoolean(ConfigLoader.config.getProperty("CLOUD_DB_VERIFIED", "false"))) {
+									System.out.println("Initiating Cloud Wipe...");
+									CloudAPI.callEdgeFunction("teardown-db", "{}");
+								}
+								
+								JOptionPane.showMessageDialog(null, "System reset successful. Terminating.");
+
+								// Terminate the app
+								System.out.println("Terminating Application...");
+								
+								System.exit(0);
+								
+							} catch (Exception ex) {
+								JOptionPane.showMessageDialog(null, "Error during cleanup: " + ex.getMessage());
+								ex.printStackTrace();
+							}
 						}
 					});
-
 					
 					mainPanel.revalidate();
         			mainPanel.repaint();
@@ -1030,13 +1090,19 @@ class DataPlace {
 
 		mainContent.add(createOptionsPanel(), BorderLayout.NORTH);
 
-        syncDatabases();
-        showData(table, mainContent, HelperFunctions.getCurrentFilters());
+		Window parent = SwingUtilities.getWindowAncestor(view);
+    
+		HelperFunctions.performSyncWithProgress(parent, 
+			() -> syncDatabases(), // Task A
+			() -> {                // Task B (runs after A)
+				showData(table, mainContent, HelperFunctions.getCurrentFilters());
 
-		jf.remove(view);
-		jf.add(mainContent);
-		jf.revalidate();
-		jf.repaint();
+				jf.remove(view);
+				jf.add(mainContent);
+				jf.revalidate();
+				jf.repaint();
+			}
+		);
 	}
 
     JPanel createOptionsPanel() {
@@ -1097,9 +1163,9 @@ class DataPlace {
 		};
 
         startTime = new JComboBox<>(
-				new String[] { "08:30", "09:20", "10:10", "11:15", "12:15", "13:30", "14:20", "15:10" });
+				new String[] { "08:30", "09:20", "10:10", "11:15", "12:15", "13:30", "14:20", "15:10", "16:00" });
 		endTime = new JComboBox<>(
-				new String[] { "Ongoing", "09:20", "10:10", "11:00", "12:15", "12:55", "14:20", "15:10", "16:00" });
+				new String[] { "Ongoing", "08:30", "09:20", "10:10", "11:00", "12:15", "12:55", "14:20", "15:10", "16:00" });
 		endTime.setSelectedItem(endTime.getItemAt(endTime.getItemCount() - 1));
 
         startTime.addActionListener(actionListenerCombo);
@@ -1137,8 +1203,12 @@ class DataPlace {
 				}
 
 			} else {
-				syncDatabases();;
-            	actionListener.actionPerformed(e);
+				Window parent = SwingUtilities.getWindowAncestor(refresh);
+
+				HelperFunctions.performSyncWithProgress(parent, 
+					() -> syncDatabases(),
+					() -> actionListener.actionPerformed(e)
+				);
 			}
 		});
 
@@ -1217,6 +1287,7 @@ public class logBookData {
 
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
+				OptionsManager.syncPendingConfigurations();
                 new DataPlace();
                 autoDelete.scheduleAutoDeleteTask();
             }
