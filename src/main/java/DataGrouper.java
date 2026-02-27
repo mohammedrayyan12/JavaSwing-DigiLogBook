@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 class SessionRecord {
     String usn, name, sessionId;
@@ -71,7 +72,10 @@ class SessionGrouper {
             StringBuilder attrKey = new StringBuilder();
             r.attributes.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .forEach(e -> attrKey.append(e.getValue()).append("_"));
+                .forEach(e -> {
+                    if (!e.getKey().equals("SysNo")) // Do not group SysNo
+                        attrKey.append(e.getValue()).append("_");
+                });
 
             String key = attrKey.toString() + getSlot(r.getLoginTime(), r.getLogoutTime()) + r.getLoginTime().toLocalDate();
             grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(r);
