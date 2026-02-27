@@ -85,7 +85,10 @@ class SingleGroupPanel extends JPanel {
 		// Second line of the heading
 		StringBuilder attrText = new StringBuilder("<html><p style='margin: 0; padding-left: 19; padding-bottom: 5;'>");
 		grp.attributes.forEach((key, value) -> {
-			attrText.append(key).append(": <b>").append(value).append("</b> &emsp; ");
+			if (!key.equals("SysNo")) {  // Do not include SysNo
+				attrText.append(key).append(": <b>")
+				.append(value).append("</b> &emsp; ");
+			}
 		});
 		attrText.append("</p></html>");
 

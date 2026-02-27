@@ -95,7 +95,7 @@ class HelperFunctions {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(BorderFactory.createLineBorder(Color.GRAY, 2));
         
-        JLabel label = new JLabel("🔄 Syncing with Cloud... Please wait.", JLabel.CENTER);
+        JLabel label = new JLabel("\u27F3 Syncing with Cloud... Please wait.", JLabel.CENTER);
         JProgressBar progressBar = new JProgressBar();
         progressBar.setIndeterminate(true); // Spinning effect
         
@@ -613,7 +613,7 @@ class ConfigLoader {
             OptionsManager.saveCategoryItems("Department", new ArrayList<>(List.of("CSE (cs)","ISE (is)","AIML (ai)","DS (cd)","ECE (ec)","MECH (me)","CIVIL (cv)")), new ArrayList<>());
             OptionsManager.saveCategoryItems("Batch", new ArrayList<>(List.of("I", "II")), new ArrayList<>());
             OptionsManager.saveCategoryItems("Sem", new ArrayList<>(List.of("1","2","3","4","5","6","7","8")), new ArrayList<>());
-            OptionsManager.saveCategoryItems("SysNo", new ArrayList<>(List.of("11","12","13","14","15","16","17","18","19","20")), new ArrayList<>());
+            OptionsManager.saveCategoryItems("SysNo", new ArrayList<>(List.of("M-11","M-12","M-13","M-14","M-15","M-16","M-17","M-18","M-19","M-20")), new ArrayList<>());
             OptionsManager.saveCategoryItems("LabName", new ArrayList<>(List.of("314","205 A","304","309","205 B")), new ArrayList<>());
             
             // Refresh the memory map immediately so the UI is ready
@@ -1004,20 +1004,23 @@ class ExportCsvPdf {
                 // Write the records for the current group
 
                 for (SessionRecord record : group.records) {
-                    pw.print(record.getLoginTime() + ",");
-                    pw.print(record.getUsn() + ",");
-                    pw.print(record.getName() + ",");
+                    pw.print(escapeCSV(record.getLoginTime().toString()) + ",");
+                    pw.print(escapeCSV(record.getUsn()) + ",");
+                    pw.print(escapeCSV(record.getName()) + ",");
 
-                    // Dynamic Categories (Subjects, Departments, etc.)
+                    // Dynamic Categories (Subject, Department, etc.)
                     for (String category : DataPlace.configMap.keySet()) {
                         // Get value from map, use empty string if not found to keep CSV columns aligned
                         String val = record.attributes.getOrDefault(category, "");
-                        pw.print(val + ",");
+                        pw.print(escapeCSV(val) + ",");
                     }
 
-                    pw.print(record.getLogoutTime() + ",");
-                    pw.print(record.getSessionId());
+                    if (record.getLogoutTime() != null) pw.print(escapeCSV(record.getLogoutTime().toString()) + ",");
+                    else pw.print("Ongoing");
+
+                    pw.print(escapeCSV(record.getSessionId()));
                     pw.println();
+
                 }
             }
 
@@ -1029,6 +1032,18 @@ class ExportCsvPdf {
             JOptionPane.showMessageDialog(null, "Error exporting file: " + ex.getMessage(), "Error",
                     JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    private String escapeCSV(String value) {
+        if (value == null) return "";
+        
+        // If the value contains a comma, a newline, or a double quote
+        if (value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r")) {
+            // Double quotes inside a value must be escaped by doubling them (" becomes "")
+            String escapedValue = value.replace("\"", "\"\"");
+            return "\"" + escapedValue + "\"";
+        }
+        return value;
     }
 
     // This method generate a PDF from a List<SessionGroup>.
@@ -1047,13 +1062,12 @@ class ExportCsvPdf {
 
             for (SessionGroup group : selectedGroups) {
                 // Create a new page for the new group
-                PDPage page = new PDPage(PDRectangle.A4);
+                PDPage page = new PDPage(PDRectangle.LEGAL);
                 document.addPage(page);
                 PDPageContentStream contentStream = new PDPageContentStream(document, page);
 
-                int yPosition = 800; // Increased to give more room at the top
+                int yPosition = 970; // Increased to give more room at the top
                 int margin = 50;
-                int cellHeight = 20;
                 int pageWidth = (int) page.getMediaBox().getWidth();
 
                 // --- Draw Group Heading --
@@ -1091,14 +1105,14 @@ class ExportCsvPdf {
                 // --- Vertical Column Dividers ---
 
                 // Define column boundaries based on percentage width (100% total)
-                // Row 1: Date (30%) | Subject (50%) | Dept (420%)
-                int w1 = (int) (BOX_WIDTH * 0.30);
+                // Row 1: Date (20%) | Subject (50%) | Dept (30%)
+                int w1 = (int) (BOX_WIDTH * 0.20);
                 int w2 = (int) (BOX_WIDTH * 0.50);
-                int w3 = (int) (BOX_WIDTH * 0.20);
+                int w3 = (int) (BOX_WIDTH * 0.30);
 
-                // Row 2: Slot (30%) | Lab No. (30) | Sem (20%) | Batch (20%)
-                int w4 = (int) (BOX_WIDTH * 0.30);
-                int w5 = (int) (BOX_WIDTH * 0.30);
+                // Row 2: Slot (20%) | Lab No. (40) | Sem (20%) | Batch (20%)
+                int w4 = (int) (BOX_WIDTH * 0.20);
+                int w5 = (int) (BOX_WIDTH * 0.40);
                 int w6 = (int) (BOX_WIDTH * 0.20);
                 int w7 = (int) (BOX_WIDTH * 0.20);
 
@@ -1138,7 +1152,7 @@ class ExportCsvPdf {
                 contentStream.setFont(BOLD_FONT, PRIORITY_FONT_SIZE);
                 contentStream.setNonStrokingColor(Color.BLACK);
                 contentStream.newLineAtOffset(textX+(w2-w1)/2, textY1); //Text Centering 
-                contentStream.showText("Subject: " + group.attributes.getOrDefault("Subjects", "-"));
+                contentStream.showText("Sub: " + group.attributes.getOrDefault("Subject", "-"));
                 contentStream.endText();
 
                 // === Column 3: Dept ===
@@ -1147,7 +1161,7 @@ class ExportCsvPdf {
                 contentStream.setFont(BOLD_FONT, PRIORITY_FONT_SIZE);
                 contentStream.setNonStrokingColor(Color.BLACK);
                 contentStream.newLineAtOffset(textX, textY1);
-                contentStream.showText("Dept: " + group.attributes.getOrDefault("Departments", "-"));
+                contentStream.showText("Dept: " + group.attributes.getOrDefault("Department", "-"));
                 contentStream.endText();
 
                 // 4. Draw Text (Row 2: Slot | Sem | Batch) - SECONDARY PRIORITY
@@ -1168,7 +1182,7 @@ class ExportCsvPdf {
                 contentStream.setFont(BOLD_FONT, SECONDARY_FONT_SIZE);
                 contentStream.setNonStrokingColor(Color.DARK_GRAY);
                 contentStream.newLineAtOffset(textX + HEADING_PADDING+ w5/5, textY2); //trying to Center
-                contentStream.showText("Lab No: 314");
+                contentStream.showText("Lab No: " + group.attributes.getOrDefault("LabName", "-"));
                 contentStream.endText();
 
                 // === Column 6: Sem ===
@@ -1177,7 +1191,7 @@ class ExportCsvPdf {
                 contentStream.setFont(BOLD_FONT, SECONDARY_FONT_SIZE);
                 contentStream.setNonStrokingColor(Color.DARK_GRAY);
                 contentStream.newLineAtOffset(textX + HEADING_PADDING, textY2);
-                contentStream.showText("Sem: " + group.attributes.getOrDefault("Semester", "-"));
+                contentStream.showText("Sem: " + group.attributes.getOrDefault("Sem", "-"));
                 contentStream.endText();
 
                 // === Column 6: Batch ===
@@ -1186,11 +1200,11 @@ class ExportCsvPdf {
                 contentStream.setFont(BOLD_FONT, SECONDARY_FONT_SIZE);
                 contentStream.setNonStrokingColor(Color.DARK_GRAY);
                 contentStream.newLineAtOffset(textX + HEADING_PADDING, textY2);
-                contentStream.showText("Batch: " + group.attributes.getOrDefault("Batches", "-"));
+                contentStream.showText("Batch: " + group.attributes.getOrDefault("Batch", "-"));
                 contentStream.endText();
 
                 // 5. Update yPosition to start the table below the heading box
-                yPosition -= BOX_HEIGHT + 10; // Move down past the box, plus a small gap
+                yPosition -= BOX_HEIGHT + 20; // Move down past the box, plus a small gap
 
                 // Reset stroking color for the main table lines
                 contentStream.setStrokingColor(Color.BLACK);
@@ -1198,14 +1212,16 @@ class ExportCsvPdf {
 
                 // --- Draw Table Headers for the Group ---
                 List<String> headerList = new ArrayList<>();
+                headerList.add("S.No");
                 headerList.add("Login Time");
                 headerList.add("USN");
                 headerList.add("Name");
 
                 // Add dynamic categories (Sem, Dept, etc.)
-                for (String category : DataPlace.configMap.keySet()) {
-                    headerList.add(category);
-                }
+                // for (String category : DataPlace.configMap.keySet()) {
+                //     headerList.add(category);
+                // }
+                headerList.add("SysNo");
 
                 headerList.add("Logout Time");
 
@@ -1213,50 +1229,59 @@ class ExportCsvPdf {
                 String[] headers = headerList.toArray(new String[0]);
 
                 // Dynamic Width allocation to columns 
-                float availableWidth = page.getMediaBox().getWidth() - (2 * margin);
-                float[] columnWidths = new float[headers.length];
-                for (int i = 0; i < headers.length; i++) {
-                    columnWidths[i] = availableWidth / headers.length; // Simple equal distribution
-                }
-                
-                drawRow(contentStream, yPosition, margin, columnWidths, cellHeight, headers,
-                        new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), Color.GRAY);
-                yPosition -= cellHeight;
 
+                // Define weights for: [S.No, login, USN, Name, SysNo, Logout]
+                float[] weights = {1.0f, 2.0f, 3.0f, 4.0f, 1.5f, 2.0f}; 
+                int availableWidth = 516; // Total width on A4 page minus margins
+                float[] columnWidths = calculateWeightedWidths(weights, availableWidth);
+
+                int headerHeight = drawMultiLineRow(contentStream, yPosition, margin, columnWidths, 23, headers, 
+                                    new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD));
+                yPosition -= headerHeight;
+
+                int i=1;
                 // --- Draw Group's Records ---
                 for (SessionRecord record : group.records) {
                     List<String> rowList = new ArrayList<>();
     
                     // Standard fields
+                    rowList.add(String.valueOf(i++));
                     rowList.add(record.getLoginTime().toLocalTime().toString()); 
                     rowList.add(record.getUsn());
                     rowList.add(record.getName());
 
                     // Dynamic attributes matching the header order
-                    for (String category : DataPlace.configMap.keySet()) {
-                        rowList.add(record.attributes.getOrDefault(category, "-"));
-                    }
+                    // for (String category : DataPlace.configMap.keySet()) {
+                    //     rowList.add(record.attributes.getOrDefault(category, "-"));
+                    // }
+                    rowList.add(record.attributes.getOrDefault("SysNo", "-"));
 
-                    rowList.add(record.getLogoutTime().toLocalTime().toString());
+                    if (record.getLogoutTime() != null) rowList.add(record.getLogoutTime().toLocalTime().toString());
+                    else rowList.add("Ongoing");
 
                     String[] rowData = rowList.toArray(new String[0]);
 
-                    drawRow(contentStream, yPosition, margin, columnWidths, cellHeight, rowData,
-                            new PDType1Font(Standard14Fonts.FontName.HELVETICA), Color.BLACK);
-                    yPosition -= cellHeight;
+                    // drawRow(contentStream, yPosition, margin, columnWidths, cellHeight, rowData,
+                    //         new PDType1Font(Standard14Fonts.FontName.HELVETICA), Color.BLACK);
+                    // yPosition -= cellHeight;
+
+                    int rowHeightUsed = drawMultiLineRow(contentStream, yPosition, margin, columnWidths, 22, rowData, 
+                                        new PDType1Font(Standard14Fonts.FontName.HELVETICA));
+                    yPosition -= (rowHeightUsed);
+
 
                     // Handle pagination within the group if needed
-                    if (yPosition < margin) {
+                    if (yPosition < 60) { // 60 is a safe "buffer" for the bottom of the page
                         contentStream.close();
                         page = new PDPage(PDRectangle.A4);
                         document.addPage(page);
                         contentStream = new PDPageContentStream(document, page);
                         yPosition = (int) page.getMediaBox().getHeight() - margin;
 
-                        // Optionally, redraw headers on the new page
-                        drawRow(contentStream, yPosition, margin, columnWidths, cellHeight, headers,
-                                new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), Color.GRAY);
-                        yPosition -= cellHeight;
+                        // Redraw headers on new page using the NEW method
+                        int hHeight = drawMultiLineRow(contentStream, yPosition, margin, columnWidths, 22, headers, 
+                                        new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD));
+                        yPosition -= hHeight;
                     }
                 }
                 contentStream.close();
@@ -1276,37 +1301,84 @@ class ExportCsvPdf {
         }
     }
 
-    private static void drawRow(PDPageContentStream contentStream, int y, int margin, float[] columnWidths, int height,
-            String[] cells, PDType1Font font, Color textColor) throws IOException {
-        contentStream.setStrokingColor(Color.BLACK);
+    private static int drawMultiLineRow(PDPageContentStream contentStream, int y, int margin, float[] columnWidths, 
+                                    int rowHeightPerLine, String[] cells, PDType1Font font) throws IOException {
+    
+        List<List<String>> wrappedCells = new ArrayList<>();
+        int maxLines = 1;
+
+        // 1. Pre-calculate wrapped lines for all cells
+        for (int i = 0; i < cells.length; i++) {
+            List<String> lines = wrapText(cells[i], columnWidths[i], font, 10);
+            wrappedCells.add(lines);
+            maxLines = Math.max(maxLines, lines.size());
+        }
+
+        int totalRowHeight = maxLines * rowHeightPerLine;
         float nextX = margin;
 
+        // 2. Draw each cell
         for (int i = 0; i < cells.length; i++) {
-            contentStream.setNonStrokingColor(Color.WHITE); // Cell background
-            contentStream.addRect(nextX, y - height, columnWidths[i], height);
+            // Draw Cell Background & Border
+            contentStream.setNonStrokingColor(Color.WHITE);
+            contentStream.addRect(nextX, y - totalRowHeight, columnWidths[i], totalRowHeight);
             contentStream.fill();
-            contentStream.setNonStrokingColor(textColor); // Text color
-
-            // Add cell text
-            contentStream.beginText();
-            contentStream.setFont(font, 10);
-            contentStream.newLineAtOffset(nextX + 5, y - height + 5);
-            contentStream.showText(cells[i]);
-            contentStream.endText();
-
-            // Add cell borders
-            contentStream.setNonStrokingColor(Color.BLACK);
-            contentStream.addRect(nextX, y - height, columnWidths[i], height);
+            
+            contentStream.setStrokingColor(Color.BLACK);
+            contentStream.addRect(nextX, y - totalRowHeight, columnWidths[i], totalRowHeight);
             contentStream.stroke();
+
+            // 3. Draw Wrapped Text
+            contentStream.setNonStrokingColor(Color.BLACK);
+            List<String> lines = wrappedCells.get(i);
+            for (int j = 0; j < lines.size(); j++) {
+                contentStream.beginText();
+                contentStream.setFont(font, 10);
+                // Move cursor down for each line
+                contentStream.newLineAtOffset(nextX + 5, y - ((rowHeightPerLine) * (j + 1)) + 5 );
+                contentStream.showText(lines.get(j));
+                contentStream.endText();
+            }
             nextX += columnWidths[i];
         }
+        
+        return totalRowHeight; // Return this so the next row knows where to start
     }
 
-    private static int[] calculateColumnWidths(int numColumns, int availableWidth) {
-        int[] widths = new int[numColumns];
-        int widthPerColumn = availableWidth / numColumns;
-        for (int i = 0; i < numColumns; i++) {
-            widths[i] = widthPerColumn;
+    private static List<String> wrapText(String text, float width, PDType1Font font, float fontSize) throws IOException {
+        List<String> lines = new ArrayList<>();
+        String[] words = text.split(" ");
+        StringBuilder line = new StringBuilder();
+        
+        for (String word : words) {
+            String testLine = line.length() == 0 ? word : line.toString() + " " + word;
+            
+            // Calculate the width of the potential line in PDF points
+            float lineWidth = font.getStringWidth(testLine) / 1000 * fontSize;
+            
+            if (lineWidth > width - 10) { // 10 is padding for cell walls
+                lines.add(line.toString());
+                line = new StringBuilder(word); // Start new line with the current word
+            } else {
+                line = new StringBuilder(testLine); // Update the current line
+            }
+        }
+        
+        // Add the final remaining line
+        if (line.length() > 0) {
+            lines.add(line.toString());
+        }
+        return lines;
+    }
+
+    private static float[] calculateWeightedWidths(float[] weights, int availableWidth) {
+        float totalWeight = 0;
+        for (float w : weights) totalWeight += w;
+
+        float[] widths = new float[weights.length];
+        for (int i = 0; i < weights.length; i++) {
+            // formula: (column weight / total weight) * total space
+            widths[i] = (weights[i] / totalWeight) * availableWidth;
         }
         return widths;
     }

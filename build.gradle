@@ -8,10 +8,13 @@ repositories {
 }
 
 dependencies {
+    //Local db
     implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
-    implementation 'com.mysql:mysql-connector-j:8.3.0'
+
+    //PDF Generation
     implementation 'org.apache.pdfbox:pdfbox:3.0.1'
-    implementation 'org.postgresql:postgresql:42.7.5' 
+
+    //JSON parsing (handling edge function)
     implementation 'com.google.code.gson:gson:2.10.1'
 }
 
