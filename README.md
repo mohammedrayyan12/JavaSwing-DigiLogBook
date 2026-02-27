@@ -54,7 +54,7 @@ The application has undergone a major architectural transformation:
 
 **Now (v2.0):**
 - **Dynamic SQL Configuration**: All categories (Subject, Department, Batch, etc.) stored in `configuration_options` table
-- **JSON-based Session Storage**: Session details stored in flexible `details` JSONB column
+- **JSON-based Session Storage**: Session details stored in flexible `details` TEXT (JSON) column
 - **UI-Driven Management**: Add/remove categories directly from Settings without code changes
 - **Auto-Sync**: Configuration changes propagate automatically to cloud
 
@@ -393,35 +393,24 @@ cloud.auto.delete.last.run.date=2025-02-27
 testing.skip.delete=false
 ```
 
-### Database Schema (v2.0)
+### 📂 Database Schema (v2.0)
 
-**Local: SQLite** (`~/.DigiLogBook/data.db`)
-
-**Table: student_log**
+Both the **Local SQLite** cache and the **Supabase Cloud** instance share a unified schema to ensure seamless data synchronization and offline-first reliability.
 ```sql
-CREATE TABLE student_log (
-    session_id TEXT PRIMARY KEY,
-    login_time TEXT NOT NULL,
-    logout_time TEXT,
-    usn TEXT NOT NULL,
-    name TEXT NOT NULL,
-    details TEXT  -- JSON string with dynamic fields
-);
-```
-
-**Cloud: Supabase PostgreSQL** (auto-created on verification)
-
-**Table: sessions** (name configurable via `RECORDS_TABLE_NAME`)
-```sql
+-- Shared schema for Local (student_log) and Cloud (sessions)
 CREATE TABLE sessions (
-    session_id TEXT PRIMARY KEY,
-    login_time TEXT NOT NULL,
-    logout_time TEXT,
-    usn TEXT NOT NULL,
-    name TEXT NOT NULL,
-    details JSONB  -- Flexible JSON storage
+    session_id  TEXT PRIMARY KEY, -- Unique session identifier
+    login_time  TEXT NOT NULL,    -- ISO8601 timestamp
+    logout_time TEXT,             -- Nullable until session completion
+    usn         TEXT NOT NULL,    -- Student registration number
+    name        TEXT NOT NULL,    -- Student name
+    details     TEXT              -- Flexible JSON storage for dynamic metadata
 );
 ```
+| Environment | Table Name | Storage Engine | Path / Host |
+| :--- | :--- | :--- | :--- |
+| **Local** | `student_log` | SQLite | `~/.DigiLogBook/data.db` |
+| **Cloud** | Configurable* | PostgreSQL | Supabase Instance (auto-created on verification) |
 
 **Table: configuration_options** (name configurable via `CONFIG_TABLE_NAME`)
 ```sql
